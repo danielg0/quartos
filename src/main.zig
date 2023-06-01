@@ -13,7 +13,7 @@ fn print(string: []const u8) void {
 }
 fn println(string: []const u8) void {
     print(string);
-    put('\n');
+    print("\r\n");
 }
 
 // -----
@@ -34,8 +34,7 @@ export fn entry() noreturn {
 fn main() !void {
     const string: []const u8 = "Hello there!";
     println(string);
-    put(try error_fn());
-    put('\n');
+    println(try error_fn());
 
     var i: u8 = 0;
     while (true) {
@@ -45,9 +44,9 @@ fn main() !void {
 
 const Error = error{explosion};
 
-pub fn error_fn() !u8 {
+pub fn error_fn() Error![]const u8 {
     // return Error.explosion;
-    return '4';
+    return "42";
 }
 
 // -----
