@@ -22,25 +22,24 @@ pub fn build(b: *std.build.Builder) void {
     exe.setLinkerScriptPath(.{ .path = "src/virt.ld" });
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    const build_step = exe.installRaw("quartos", .{});
+    exe.install();
 
     // Run kernel using QEMU
     const qemu_path = "qemu-system-riscv32";
+    const cores = "4";
     const qemu_run = b.addSystemCommand(&[_][]const u8{
         qemu_path,
         "-nographic",
         "-smp",
-        "4",
+        cores,
         "-machine",
         "virt",
         "-bios",
         "none",
         "-kernel",
-        "quartos",
     });
-    qemu_run.cwd = "zig-out/bin";
-    qemu_run.step.dependOn(&build_step.step);
     qemu_run.step.dependOn(&qemu_help.step);
+    qemu_run.addArtifactArg(exe);
 
     const run_step = b.step("run", "Boot the kernel in QEMU");
     run_step.dependOn(&qemu_run.step);
