@@ -29,7 +29,6 @@ pub fn build(b: *std.build.Builder) void {
     const cores = "4";
     const qemu_run = b.addSystemCommand(&[_][]const u8{
         qemu_path,
-        "-nographic",
         "-smp",
         cores,
         "-machine",
@@ -38,11 +37,24 @@ pub fn build(b: *std.build.Builder) void {
         "none",
         "-kernel",
     });
-    qemu_run.step.dependOn(&qemu_help.step);
     qemu_run.addArtifactArg(exe);
 
     const run_step = b.step("run", "Boot the kernel in QEMU");
     run_step.dependOn(&qemu_run.step);
+
+    // Flag to run kernel in QEMU with gdb debugging
+    const gdb = b.option(bool, "gdb", "Start QEMU with GDB debugging enabled");
+    if (gdb orelse false) {
+        qemu_run.addArg("-s");
+        qemu_run.addArg("-S");
+    }
+    // Flag to run kernel in QEMU with graphics
+    const nographic = b.option(bool, "nographic", "Start QEMU in the terminal");
+    if (nographic orelse false) {
+        // make sure to include help message on how to exit
+        qemu_run.step.dependOn(&qemu_help.step);
+        qemu_run.addArg("-nographic");
+    }
 
     // TODO: how to run unit tests?
     // const exe_tests = b.addTest("src/main.zig");
