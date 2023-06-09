@@ -1,65 +1,17 @@
 const std = @import("std");
 const builtin = std.builtin;
 
-// -----
-
-// https://www.lammertbies.nl/comm/info/serial-uart
-const LineStatusReg = packed struct {
-    data_available: bool,
-    overrun_error: bool,
-    parity_error: bool,
-    framing_error: bool,
-    break_signal: bool,
-    thr_empty: bool,
-    line_idle: bool,
-    errornous_data: bool,
-};
-const uart_base = 0x10000000;
-const uart_data = @intToPtr(*volatile u8, uart_base);
-const status = @intToPtr(*volatile LineStatusReg, uart_base + 5);
-fn put(char: u8) void {
-    uart_data.* = char;
-}
-fn print(string: []const u8) void {
-    for (string) |c| {
-        put(c);
-    }
-}
-fn println(string: []const u8) void {
-    print(string);
-    print("\r\n");
-}
-fn get() u8 {
-    // busy wait for data to be in uart buffer
-    while (!status.data_available) {}
-    return uart_data.*;
-}
-fn getln(buffer: []u8) usize {
-    var n: usize = 0;
-    while (n < buffer.len) {
-        const c = get();
-        put(c);
-        if (c == '\r') {
-            print("\r\n");
-            break;
-        } else {
-            buffer[n] = c;
-            n += 1;
-        }
-    }
-    return n;
-}
+const uart = @import("kernel/uart.zig");
 
 // -----
 
 export fn entry() noreturn {
     main() catch |e| {
-        println("KERNEL PANIC!");
-        println(@errorName(e));
+        uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
         while (true) {}
     };
 
-    println("KERNEL SHUTDOWN");
+    uart.out.writeAll("KERNEL SHUTDOWN\r\n") catch unreachable;
     while (true) {}
 }
 
@@ -67,28 +19,22 @@ export fn entry() noreturn {
 
 fn main() !void {
     // test out printing
-    const string: []const u8 = "Hello there!";
-    println(string);
-    println(try error_fn());
+    const string: []const u8 = "Hello there!\r\n";
+    try uart.out.writeAll(string);
+    try uart.out.print("{s}\r\n", .{try error_fn()});
 
     // manually echo a line
-    var c = get();
+    var c = try uart.in.readByte();
     while (c != '\r') {
-        put(c);
-        c = get();
+        try uart.out.writeByte(c);
+        c = try uart.in.readByte();
     }
-    println("");
+    try uart.out.writeAll("\r\n");
 
     // try getting and printing line using helper functions
     var buff: [100]u8 = undefined;
-    const length = getln(&buff);
-    var msg_buff: [100]u8 = undefined;
-    const msg = try std.fmt.bufPrint(
-        &msg_buff,
-        "You typed {d} characters\n\r{s}",
-        .{ length, buff[0..length] },
-    );
-    println(msg);
+    const typed = try uart.in.readUntilDelimiter(&buff, '\r');
+    try uart.out.print("You typed {d} characters\r\n{s}\r\n", .{ typed.len, typed });
 
     // purposely cause a panic to test out panic handler
     var i: u8 = 0;
@@ -110,7 +56,6 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?us
     _ = error_return_trace;
     _ = siz;
 
-    println("PANIC!");
-    println(msg);
+    uart.out.print("PANIC!\r\n{s}\r\n", .{msg}) catch unreachable;
     while (true) {}
 }
