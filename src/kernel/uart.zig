@@ -30,6 +30,10 @@ fn write(ctx: void, buff: []const u8) !usize {
 fn read(ctx: void, buff: []u8) !usize {
     _ = ctx;
 
+    // don't read into an empty buffer
+    if (buff.len <= 0)
+        return 0;
+
     // busy wait until data available in uart buffer
     while (!status.data_available) {}
 

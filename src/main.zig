@@ -18,6 +18,10 @@ export fn entry() noreturn {
 // -----
 
 fn main() !void {
+    // try reading into an empty array
+    var empty = [_]u8{};
+    _ = try uart.in.read(&empty);
+
     // test out printing
     const string: []const u8 = "Hello there!\r\n";
     try uart.out.writeAll(string);
