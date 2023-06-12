@@ -18,8 +18,8 @@ pub fn build(b: *std.build.Builder) void {
 
     // Compile kernel, using boot assembly and a custom linker file
     const exe = b.addExecutable("quartos", "src/main.zig");
-    exe.addAssemblyFile("src/start.s");
-    exe.setLinkerScriptPath(.{ .path = "src/virt.ld" });
+    exe.addAssemblyFile("src/boot/start.s");
+    exe.setLinkerScriptPath(.{ .path = "src/boot/virt.ld" });
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
