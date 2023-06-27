@@ -2,7 +2,7 @@ const io = @import("std").io;
 
 // register definitions
 // https://www.lammertbies.nl/comm/info/serial-uart
-const LineStatusReg = packed struct {
+const LineStatusReg = packed struct(u8) {
     data_available: bool,
     overrun_error: bool,
     parity_error: bool,
