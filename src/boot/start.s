@@ -16,6 +16,10 @@ _start:
     bnez a0, park                   # if we're not on the hart 0
                                     # we park the hart
 
+    # when we start a1 contains a pointer to the flattened device tree
+    # www.sifive.com/blog/all-aboard-part-6-booting-a-risc-v-linux-kernel
+    mv   a0, a1                     # pass it as first argument to entry
+
     j    entry                      # hart 0 jump to zig
 
 park:

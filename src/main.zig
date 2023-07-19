@@ -1,12 +1,23 @@
 const std = @import("std");
 const builtin = std.builtin;
 
+const fdtb = @import("boot/fdtb.zig");
 const uart = @import("kernel/uart.zig");
 const process = @import("kernel/process.zig");
 
 // -----
 
-export fn entry() noreturn {
+export fn entry(fdtb_blob: ?[*]const u8) noreturn {
+    if (fdtb_blob) |blob| {
+        fdtb.print(blob, uart.out) catch |e| {
+            uart.out.print("FDTB PARSE ERROR!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
+            while (true) {}
+        };
+    } else {
+        uart.out.writeAll("FDTB POINTER NULL!\r\n") catch unreachable;
+        while (true) {}
+    }
+
     main() catch |e| {
         uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
         while (true) {}
