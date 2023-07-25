@@ -162,7 +162,7 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
         @alignCast(@alignOf(u32), blob + header.off_dt_struct),
     );
     var i: usize = 0;
-    while (i < header.size_dt_struct / 4) {
+    while (i < header.size_dt_struct / @sizeOf(u32)) {
         // get token, converting to little endian if needed
         const tok = @intToEnum(
             StructureToken,
