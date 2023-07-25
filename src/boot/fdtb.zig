@@ -86,13 +86,13 @@ fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) usize {
 }
 
 // try to figure out if a buffer is a string
-// if all values are visible ascii chars, it probably is
+// if all values are visible ascii chars, and it ends in \0, it probably is
 fn likely_string(string: []const u8) bool {
     if (string.len == 0) return false;
     for (string[0 .. string.len - 1]) |c|
         if (c < ' ' or c > '~')
             return false;
-    return true;
+    return string[string.len - 1] == '\x00';
 }
 
 const ParseError = error{
