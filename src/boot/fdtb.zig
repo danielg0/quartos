@@ -40,22 +40,23 @@ const StructureToken = enum(u32) {
 };
 
 // print nodes in structure block, returning offset to next token
-fn begin_node(token: [*]const u32, writer: anytype) u32 {
+fn begin_node(token: [*]const u32, writer: anytype) usize {
     // a begin node is the token followed by a null-terminated string
     try writer.writeAll("Node '");
     const name = @ptrCast([*]const u8, token + 1);
     // start at one to make sure we count null byte
-    var i: u32 = 1;
+    var i: usize = 1;
     while (name[i - 1] != '\x00') : (i += 1)
         try writer.writeByte(name[i - 1]);
     try writer.writeAll("'\r\n");
-    // calculate string length in 32-bit bytes
-    const str_len = (i / 4) + if (i % 4 != 0) @as(u32, 1) else @as(u32, 0);
+    // calculate string length padded to 32 bits
+    const str_len = (i / @sizeOf(u32)) +
+        if (i % @sizeOf(u32) != 0) @as(u32, 1) else @as(u32, 0);
     // final offset is string length plus token
     return 1 + str_len;
 }
 
-fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) u32 {
+fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) usize {
     // length of property and name offset both big endian
     const len = @byteSwap(token[1]);
     const name_offset = @byteSwap(token[2]);
@@ -68,8 +69,8 @@ fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) u32 {
     // pretty print the value
     try writer.print("  {s}: ", .{key});
     if (likely_string(value)) {
-        try writer.print("{s}\r\n", .{value});
-    } else if (len == 4) {
+        try writer.print("'{s}'\r\n", .{value});
+    } else if (len == @sizeOf(u32)) {
         // if length 4, likely a 32-bit big endian value
         const number = @ptrCast(*const u32, token + 3).*;
         try writer.print("{d}\r\n", .{@byteSwap(number)});
@@ -77,8 +78,10 @@ fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) u32 {
         try writer.print("{any}\r\n", .{value});
     }
 
-    // calculate length of value in 32-bit bytes
-    const val_len = len / 4 + if (len % 4 != 0) @as(u32, 1) else @as(u32, 0);
+    // calculate length of value padded to 32 bits
+    const val_len = len / @sizeOf(u32) +
+        if (len % @sizeOf(u32) != 0) @as(u32, 1) else @as(u32, 0);
+    // offset is value length, and byte for token, length and name offset
     return val_len + 3;
 }
 
@@ -100,7 +103,7 @@ const ParseError = error{
 
 // parse and print out a fdtb blob given its address
 pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
-    var header = @ptrCast(*const Header, @alignCast(8, blob)).*;
+    var header = @ptrCast(*const Header, @alignCast(@alignOf(Header), blob)).*;
     // blob header is in big-endian, so swap fields if CPU is little-endian
     comptime if (native_endian == .Little) {
         inline for (@typeInfo(Header).Struct.fields) |field| {
@@ -124,9 +127,9 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
     // parse structure block
     const structure = @ptrCast(
         [*]const u32,
-        @alignCast(4, blob + header.off_dt_struct),
+        @alignCast(@alignOf(u32), blob + header.off_dt_struct),
     );
-    var i: u32 = 0;
+    var i: usize = 0;
     while (i < header.size_dt_struct / 4) {
         // get token, converting to little endian if needed
         const tok = @intToEnum(
