@@ -1,5 +1,6 @@
 const std = @import("std");
 const native_endian = @import("builtin").target.cpu.arch.endian();
+const bit_width = @import("builtin").target.cpu.arch.ptrBitWidth();
 
 // flattened devicetree blob parser
 // written for version 17
@@ -28,6 +29,13 @@ const Header = packed struct(u320) {
     size_dt_strings: u32,
     // length in bytes of structure block
     size_dt_struct: u32,
+};
+
+const MemoryReservation = packed struct(u128) {
+    // physical address and size of a reserved memory region
+    // both values are big-endian
+    address: u64,
+    size: u64,
 };
 
 const StructureToken = enum(u32) {
@@ -123,6 +131,30 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
 
     // get pointers to other blocks
     const strings = @ptrCast([*]const u8, blob + header.off_dt_strings);
+
+    // parse and print memory reservations
+    const mem_rsvmap = @ptrCast(
+        [*]const MemoryReservation,
+        @alignCast(@alignOf(MemoryReservation), blob + header.off_mem_rsvmap),
+    );
+    var mem_rsvmap_index: usize = 0;
+    while (true) : (mem_rsvmap_index += 1) {
+        var mem_res = mem_rsvmap[mem_rsvmap_index];
+        // mem_rsvmap values are big-endian
+        comptime if (native_endian == .Little) {
+            mem_res.address = @byteSwap(mem_res.address);
+            mem_res.size = @byteSwap(mem_res.size);
+        };
+        // if on a 32-bit system, we should ignore the upper 32 bits
+        comptime if (bit_width == 32) {
+            mem_res.address = @truncate(u32, mem_res.address);
+            mem_res.size = @truncate(u32, mem_res.address);
+        };
+
+        try writer.print("{any}\r\n", .{mem_res});
+        if (mem_res.address == 0 and mem_res.size == 0)
+            break;
+    }
 
     // parse structure block
     const structure = @ptrCast(
