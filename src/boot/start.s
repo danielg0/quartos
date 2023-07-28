@@ -1,4 +1,5 @@
 .global _start
+.global park
 
 .global .text.init
 

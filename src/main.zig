@@ -7,6 +7,8 @@ const process = @import("kernel/process.zig");
 
 const enabled_fdtb = false;
 
+extern fn park() noreturn;
+
 // -----
 
 export fn entry(fdtb_blob: ?[*]const u8) noreturn {
@@ -14,21 +16,21 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
         if (fdtb_blob) |blob| {
             fdtb.print(blob, uart.out) catch |e| {
                 uart.out.print("FDTB PARSE ERROR!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
-                while (true) {}
+                park();
             };
         } else {
             uart.out.writeAll("FDTB POINTER NULL!\r\n") catch unreachable;
-            while (true) {}
+            park();
         }
     };
 
     main() catch |e| {
         uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
-        while (true) {}
+        park();
     };
 
     uart.out.writeAll("KERNEL SHUTDOWN\r\n") catch unreachable;
-    while (true) {}
+    park();
 }
 
 // -----
@@ -109,5 +111,5 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?us
     _ = siz;
 
     uart.out.print("PANIC!\r\n{s}\r\n", .{msg}) catch unreachable;
-    while (true) {}
+    park();
 }
