@@ -1,3 +1,6 @@
+const NAME_LEN = 16;
+const Name = [NAME_LEN]u8;
+
 pub const Process = struct {
     pub const State = enum {
         RUNNING,
@@ -5,7 +8,7 @@ pub const Process = struct {
         BLOCKED,
     };
 
-    name: []const u8,
+    name: Name,
     state: State,
     stack_ptr: usize,
 };
@@ -18,4 +21,15 @@ pub extern fn switch_process(curr: *Process, next: *Process) *Process;
 // pointer to it, as zig struct layout isn't guaranteed
 export fn process_stack_ptr(proc: *Process) *usize {
     return &proc.stack_ptr;
+}
+
+// convert a comptime u8 slice (ie. a string literal), to a process name
+pub fn name(comptime literal: []const u8) Name {
+    if (literal.len > NAME_LEN)
+        @compileError("Process name too long");
+    var arr: Name = [_]u8{0} ** NAME_LEN;
+    for (literal) |c, i| {
+        arr[i] = c;
+    }
+    return arr;
 }

@@ -60,7 +60,7 @@ fn main() !void {
     proc_b.stack_ptr = @ptrToInt(&proc_b_stack[size - 13]);
     proc_b_stack[size - 1] = @ptrToInt(&proc_b_fn);
     // attempt context shift
-    try uart.out.writeAll("Trying to context switch\r\n");
+    try uart.out.print("Trying to context switch to {s}.\r\n", .{proc_b.name});
     _ = process.switch_process(&proc_a, &proc_b);
 
     // we should get back here
@@ -80,12 +80,12 @@ fn main() !void {
 
 // hardcode some processes for now, they'll be in a list eventually
 var proc_a: process.Process = .{
-    .name = "main",
+    .name = process.name("main"),
     .state = process.Process.State.RUNNING,
     .stack_ptr = undefined,
 };
 var proc_b: process.Process = .{
-    .name = "subprocess",
+    .name = process.name("subprocess"),
     .state = process.Process.State.READY,
     .stack_ptr = undefined,
 };
