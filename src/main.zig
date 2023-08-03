@@ -12,7 +12,7 @@ extern fn park() noreturn;
 // -----
 
 export fn entry(fdtb_blob: ?[*]const u8) noreturn {
-    comptime if (enabled_fdtb) {
+    if (enabled_fdtb) {
         if (fdtb_blob) |blob| {
             fdtb.print(blob, uart.out) catch |e| {
                 uart.out.print("FDTB PARSE ERROR!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
@@ -22,7 +22,7 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
             uart.out.writeAll("FDTB POINTER NULL!\r\n") catch unreachable;
             park();
         }
-    };
+    }
 
     main() catch |e| {
         uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
