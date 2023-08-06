@@ -15,8 +15,8 @@ const LineStatusReg = packed struct(u8) {
 
 // addresses for qemu virt machine
 const uart_base = 0x10000000;
-const data = @intToPtr(*volatile u8, uart_base);
-const status = @intToPtr(*volatile LineStatusReg, uart_base + 5);
+const data: *volatile u8 = @ptrFromInt(uart_base);
+const status: *volatile LineStatusReg = @ptrFromInt(uart_base + 5);
 
 // read and write both return the number of bytes read/written
 fn write(ctx: void, buff: []const u8) !usize {

@@ -57,8 +57,8 @@ fn main() !void {
     // create buffer for proc b stack, and set it up with an entry point
     const size: usize = 200;
     var proc_b_stack: [size]usize = undefined;
-    proc_b.stack_ptr = @ptrToInt(&proc_b_stack[size - 13]);
-    proc_b_stack[size - 1] = @ptrToInt(&proc_b_fn);
+    proc_b.stack_ptr = @intFromPtr(&proc_b_stack[size - 13]);
+    proc_b_stack[size - 1] = @intFromPtr(&proc_b_fn);
     // attempt context shift
     try uart.out.print("Trying to context switch to {s}.\r\n", .{proc_b.name});
     _ = process.switch_process(&proc_a, &proc_b);

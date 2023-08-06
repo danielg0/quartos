@@ -1,14 +1,15 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     // Set target to baremetal riscv32
     const target = std.zig.CrossTarget.parse(.{
         .arch_os_abi = "riscv32-freestanding",
     }) catch unreachable;
 
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
-    const mode = b.standardReleaseOptions();
+    // Standard optimization options allow the person running `zig build` to select
+    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
+    // set a preferred release mode, allowing the user to decide how to optimize.
+    const optimize = b.standardOptimizeOption(.{});
 
     // QEMU help message
     const qemu_help = b.addSystemCommand(&[_][]const u8{
@@ -17,13 +18,16 @@ pub fn build(b: *std.build.Builder) void {
     });
 
     // Compile kernel, using boot assembly and a custom linker file
-    const exe = b.addExecutable("quartos", "src/main.zig");
-    exe.addAssemblyFile("src/boot/start.s");
-    exe.addAssemblyFile("src/kernel/switch_process.s");
-    exe.setLinkerScriptPath(.{ .path = "src/boot/virt.ld" });
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.install();
+    const exe = b.addExecutable(.{
+        .name = "quartos",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.addAssemblyFile(.{ .path = "src/boot/start.s" });
+    exe.addAssemblyFile(.{ .path = "src/kernel/switch_process.s" });
+    exe.setLinkerScript(.{ .path = "src/boot/virt.ld" });
+    b.installArtifact(exe);
 
     // Run kernel using QEMU
     const qemu_path = "qemu-system-riscv32";

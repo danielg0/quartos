@@ -1,6 +1,6 @@
 const std = @import("std");
 const native_endian = @import("builtin").target.cpu.arch.endian();
-const bit_width = @import("builtin").target.cpu.arch.ptrBitWidth();
+const bit_width = @import("builtin").target.ptrBitWidth();
 
 // flattened devicetree blob parser
 // written for version 17
@@ -51,7 +51,7 @@ const StructureToken = enum(u32) {
 fn begin_node(token: [*]const u32, writer: anytype) usize {
     // a begin node is the token followed by a null-terminated string
     try writer.writeAll("Node '");
-    const name = @ptrCast([*]const u8, token + 1);
+    const name: [*]const u8 = @ptrCast(token + 1);
     // start at one to make sure we count null byte
     var i: usize = 1;
     while (name[i - 1] != '\x00') : (i += 1)
@@ -70,9 +70,9 @@ fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) usize {
     const name_offset = @byteSwap(token[2]);
 
     // key is a null terminated string in the strings block
-    const key = @ptrCast([*:0]const u8, strings + name_offset);
+    const key: [*:0]const u8 = @ptrCast(strings + name_offset);
     // value is an array of bytes following the name_offset
-    const value = @ptrCast([*]const u8, token + 3)[0..len];
+    const value = @as([*]const u8, @ptrCast(token + 3))[0..len];
 
     // pretty print the value
     try writer.print("  {s}: ", .{key});
@@ -80,8 +80,8 @@ fn prop_node(token: [*]const u32, strings: [*]const u8, writer: anytype) usize {
         try writer.print("'{s}'\r\n", .{value});
     } else if (len == @sizeOf(u32)) {
         // if length 4, likely a 32-bit big endian value
-        const number = @ptrCast(*const u32, token + 3).*;
-        try writer.print("{d}\r\n", .{@byteSwap(number)});
+        const number: *const u32 = @ptrCast(token + 3);
+        try writer.print("{d}\r\n", .{@byteSwap(number.*)});
     } else {
         try writer.print("{any}\r\n", .{value});
     }
@@ -111,7 +111,7 @@ const ParseError = error{
 
 // parse and print out a fdtb blob given its address
 pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
-    var header = @ptrCast(*const Header, @alignCast(@alignOf(Header), blob)).*;
+    var header = @as(*const Header, @ptrCast(@alignCast(blob))).*;
     // blob header is in big-endian, so swap fields if CPU is little-endian
     comptime if (native_endian == .Little) {
         inline for (@typeInfo(Header).Struct.fields) |field| {
@@ -130,13 +130,11 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
     try writer.print("FDT blob version {d}\r\n", .{header.version});
 
     // get pointers to other blocks
-    const strings = @ptrCast([*]const u8, blob + header.off_dt_strings);
+    const strings: [*]const u8 = @ptrCast(blob + header.off_dt_strings);
 
     // parse and print memory reservations
-    const mem_rsvmap = @ptrCast(
-        [*]const MemoryReservation,
-        @alignCast(@alignOf(MemoryReservation), blob + header.off_mem_rsvmap),
-    );
+    const mem_rsvmap: [*]const MemoryReservation =
+        @ptrCast(@alignCast(blob + header.off_mem_rsvmap));
     var mem_rsvmap_index: usize = 0;
     while (true) : (mem_rsvmap_index += 1) {
         var mem_res = mem_rsvmap[mem_rsvmap_index];
@@ -146,9 +144,10 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
             mem_res.size = @byteSwap(mem_res.size);
         };
         // if on a 32-bit system, we should ignore the upper 32 bits
+        // trucate in-place to 32 bits, upper word replaced with zeroes
         comptime if (bit_width == 32) {
-            mem_res.address = @truncate(u32, mem_res.address);
-            mem_res.size = @truncate(u32, mem_res.address);
+            mem_res.address = @as(u32, @truncate(mem_res.address));
+            mem_res.size = @as(u32, @truncate(mem_res.address));
         };
 
         try writer.print("{any}\r\n", .{mem_res});
@@ -157,20 +156,15 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
     }
 
     // parse structure block
-    const structure = @ptrCast(
-        [*]const u32,
-        @alignCast(@alignOf(u32), blob + header.off_dt_struct),
-    );
+    const structure: [*]const u32 =
+        @ptrCast(@alignCast(blob + header.off_dt_struct));
     var i: usize = 0;
     while (i < header.size_dt_struct / @sizeOf(u32)) {
         // get token, converting to little endian if needed
-        const tok = @intToEnum(
-            StructureToken,
-            comptime switch (native_endian) {
-                .Little => @byteSwap(structure[i]),
-                .Big => structure[i],
-            },
-        );
+        const tok: StructureToken = @enumFromInt(switch (native_endian) {
+            .Little => @byteSwap(structure[i]),
+            .Big => structure[i],
+        });
 
         // output value depending on token
         switch (tok) {

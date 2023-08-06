@@ -28,7 +28,7 @@ pub fn name(comptime literal: []const u8) Name {
     if (literal.len > NAME_LEN)
         @compileError("Process name too long");
     var arr: Name = [_]u8{0} ** NAME_LEN;
-    for (literal) |c, i| {
+    for (literal, 0..) |c, i| {
         arr[i] = c;
     }
     return arr;
