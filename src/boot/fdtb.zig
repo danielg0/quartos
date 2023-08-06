@@ -113,11 +113,11 @@ const ParseError = error{
 pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
     var header = @as(*const Header, @ptrCast(@alignCast(blob))).*;
     // blob header is in big-endian, so swap fields if CPU is little-endian
-    comptime if (native_endian == .Little) {
+    if (native_endian == .Little) {
         inline for (@typeInfo(Header).Struct.fields) |field| {
             @field(header, field.name) = @byteSwap(@field(header, field.name));
         }
-    };
+    }
 
     // perform header checks
     if (header.magic != 0xd00dfeed) {
@@ -139,16 +139,16 @@ pub fn print(blob: [*]const u8, writer: anytype) ParseError!void {
     while (true) : (mem_rsvmap_index += 1) {
         var mem_res = mem_rsvmap[mem_rsvmap_index];
         // mem_rsvmap values are big-endian
-        comptime if (native_endian == .Little) {
+        if (native_endian == .Little) {
             mem_res.address = @byteSwap(mem_res.address);
             mem_res.size = @byteSwap(mem_res.size);
-        };
+        }
         // if on a 32-bit system, we should ignore the upper 32 bits
         // trucate in-place to 32 bits, upper word replaced with zeroes
-        comptime if (bit_width == 32) {
+        if (bit_width == 32) {
             mem_res.address = @as(u32, @truncate(mem_res.address));
             mem_res.size = @as(u32, @truncate(mem_res.address));
-        };
+        }
 
         try writer.print("{any}\r\n", .{mem_res});
         if (mem_res.address == 0 and mem_res.size == 0)
