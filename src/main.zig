@@ -4,6 +4,8 @@ const builtin = std.builtin;
 const fdtb = @import("boot/fdtb.zig");
 const uart = @import("kernel/uart.zig");
 const process = @import("kernel/process.zig");
+const interrupt = @import("kernel/interrupt.zig");
+const timer = @import("kernel/timer.zig");
 
 const enabled_fdtb = false;
 
@@ -39,6 +41,10 @@ fn main() !void {
     // try reading into an empty array
     var empty = [_]u8{};
     _ = try uart.in.read(&empty);
+
+    interrupt.init();
+    timer.sleep(2);
+    interrupt.enable(.M_TIMER);
 
     // test out printing
     const string: []const u8 = "Hello there!\r\n";
@@ -112,4 +118,25 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?us
 
     uart.out.print("PANIC!\r\n{s}\r\n", .{msg}) catch unreachable;
     park();
+}
+
+export fn exception(code: u8) noreturn {
+    const msg = switch (code) {
+        0 => "Instruction address misaligned",
+        1 => "Instruction access fault",
+        2 => "Illegal instruction",
+        3 => "Breakpoint",
+        4 => "Load address misaligned",
+        5 => "Load access fault",
+        6 => "Store/AMO address misaligned",
+        7 => "Store/AMO access fault",
+        8 => "Environment call from U-mode",
+        9 => "Environment call from S-mode",
+        11 => "Environment call from M-mode",
+        12 => "Instruction page fault",
+        13 => "Load page fault",
+        15 => "Store/AMO page fault",
+        else => "Reserved/Custom Exception",
+    };
+    panic(msg, null, null);
 }

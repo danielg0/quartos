@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.addAssemblyFile(.{ .path = "src/boot/start.s" });
+    exe.addAssemblyFile(.{ .path = "src/kernel/interrupt.s" });
     exe.addAssemblyFile(.{ .path = "src/kernel/switch_process.s" });
     exe.setLinkerScript(.{ .path = "src/boot/virt.ld" });
     b.installArtifact(exe);
