@@ -42,8 +42,7 @@ fn read(ctx: void, buff: []u8) !usize {
 }
 
 // define public reader/writer for uart
-// undefined because they need no context
-pub const out: io.Writer(void, error{}, write) = undefined;
-pub const in: io.Reader(void, error{}, read) = undefined;
+pub const out: io.Writer(void, error{}, write) = .{ .context = {} };
+pub const in: io.Reader(void, error{}, read) = .{ .context = {} };
 
 // TODO: helper functions like getLine, etc. that echo what's typed?
