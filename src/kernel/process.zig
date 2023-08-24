@@ -19,9 +19,7 @@ pub const Process = struct {
 pub extern fn switch_process(curr: *Process, next: *Process) *Process;
 // it uses this exported function for getting to a process' stack pointer from
 // pointer to it, as zig struct layout isn't guaranteed
-export fn process_stack_ptr(proc: *Process) *usize {
-    return &proc.stack_ptr;
-}
+export const process_stack_ptr: u32 = @offsetOf(Process, "stack_ptr");
 
 // convert a comptime u8 slice (ie. a string literal), to a process name
 pub fn name(comptime literal: []const u8) Name {

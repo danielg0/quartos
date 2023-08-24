@@ -37,21 +37,22 @@ switch_process:
     sw s0, 44(sp)
     sw ra, 48(sp)
 
-    # at this point, all registers saved, so we can do whatever we like whilst
-    # we get the address of the stack pointer
-    mv s0, a0              # s0 = &curr
-    mv s1, a1              # s1 = &next
-    call process_stack_ptr # a0 = &curr.stack_ptr
-    mv s2, a0              # s2 = &curr.stack_ptr
-    mv a0, s1              # a0 = &next
-    call process_stack_ptr # a0 = &next.stack_ptr
+    # at this point, all registers saved
+    # save curr so we can restore it later
+    mv s0, a0
+
+    # get offset of stack pointer in process struct
+    # switch_process is called with a0 = &curr, a1 = &next
+    addi a0, a0, %lo(process_stack_ptr)
+    addi a1, a1, %lo(process_stack_ptr)
+    # now a0 = &curr.stack_ptr and a1 = &next.stack_ptr
 
     # switch around stack pointers
-    sw sp, (s2)
-    lw sp, (a0)
+    sw sp, (a0)
+    lw sp, (a1)
 
     # a0 = &curr (so it's returned once we pop registers)
-    mv a0, s0 
+    mv a0, s0
 
     # restore saved registers from stack
     lw s11, 0(sp)
