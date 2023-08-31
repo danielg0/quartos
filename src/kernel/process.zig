@@ -1,3 +1,5 @@
+const StructList = @import("struct_list.zig").StructList;
+
 const NAME_LEN = 16;
 const Name = [NAME_LEN]u8;
 
@@ -8,20 +10,18 @@ pub const Process = struct {
         BLOCKED,
     };
 
+    // unique, kernel-wide identifier for this process
+    id: u16,
     name: Name,
     state: State,
-    stack_ptr: usize,
-};
 
-// context switch on the current core from one thread to another
-// next should also be inside switch_threads
-// returns the process we just switched from
-pub extern fn switch_process(curr: *Process, next: *Process) *Process;
-// it uses this exported function for getting to a process' stack pointer from
-// pointer to it, as zig struct layout isn't guaranteed
-export fn process_stack_ptr(proc: *Process) *usize {
-    return &proc.stack_ptr;
-}
+    // holds registers whilst this process isn't running
+    saved: [32]usize = [_]usize{0} ** 32,
+
+    // list elements for the all processes and ready/blocked lists
+    allelem: StructList.Elem = .{},
+    elem: StructList.Elem = .{},
+};
 
 // convert a comptime u8 slice (ie. a string literal), to a process name
 pub fn name(comptime literal: []const u8) Name {
