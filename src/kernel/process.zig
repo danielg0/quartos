@@ -16,7 +16,7 @@ pub const Process = struct {
     state: State,
 
     // holds registers whilst this process isn't running
-    saved: [32]usize = [_]usize{0} ** 32,
+    saved: [31]usize = [_]usize{0} ** 31,
 
     // list elements for the all processes and ready/blocked lists
     allelem: StructList.Elem = .{},
