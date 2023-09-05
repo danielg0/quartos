@@ -1,0 +1,279 @@
+const process = @import("process.zig");
+const std = @import("std");
+const uart = @import("uart.zig");
+
+// defined in boot/virt.ld
+extern const _stack_end: *u32;
+
+// in RISCV, traps have two types of causes, interrupts and exceptions. We want
+// to be able to register handlers for both types (eg. a software interrupt is
+// an interrupt, and a page fault is an exception)
+// I'm choosing to ignore traps designed for custom and platform use, which
+// means the highest exception code we need to handle is 15, so all exception &
+// interrupt codes conveniently fit into 4 bits
+
+// see mcause register definition in RISCV privileged spec
+// Trap is an enum for referring to the different types of interrupt/exception
+// exceptions (ie. mcause interrupt bit = 0) will have values 0-15
+// interrupts (ie. mcause interrupt bit = 1) will have values 16-31
+pub const Trap = enum(u5) {
+    // exceptions
+    InstrAddrMisalign = 0,
+    InstrAccFault = 1,
+    IllegalInstr = 2,
+    Breakpoint = 3,
+    LoadAddrMisalign = 4,
+    LoadAccFault = 5,
+    StoreAddrMisalign = 6,
+    StoreAccFault = 7,
+    UModeEnvCall = 8,
+    SModeEnvCall = 9,
+    MModeEnvCall = 11,
+    InstrPageFault = 12,
+    LoadPageFault = 13,
+    StorePageFault = 15,
+    // interrupts
+    SModeSoftware = 17,
+    MModeSoftware = 19,
+    SModeTimer = 21,
+    MModeTimer = 23,
+    SModeExternal = 25,
+    MModeExternal = 27,
+    // other custom/reserved interrupts
+    _,
+};
+
+// array of function pointers to trap handlers
+// index for a given interrupt/exception's handler is its value in the Trap enum
+const TrapHandler = *const fn (running: *process.Process) callconv(.C) void;
+var handlers: [32]?TrapHandler = [_]?TrapHandler{null} ** 32;
+
+// functions for registering/unregistering handlers
+// should always be functions in kernel space (ie. message send primitives)
+pub fn register(trap: Trap, handler: TrapHandler) !void {
+    // check we don't already have a handler for that trap
+    if (handlers[@intFromEnum(trap)] != null)
+        return error.TrapAlreadyRegistered;
+    // TODO: add check for kernel space?
+    handlers[@intFromEnum(trap)] = handler;
+}
+pub fn unregister(trap: Trap) void {
+    handlers[@intFromEnum(trap)] = null;
+}
+
+// initialise traps
+// setup stub for handling traps
+pub fn init() void {
+    // write address of where to jump on a trap to mtvec
+    // it needs to be aligned to 4 bytes, leaving the lower 2 bits for us to use
+    // to specify the "mode"
+    // riscv-privileged-20211203.pdf#subsection.3.1.7
+    const Mode = enum(u2) {
+        DIRECT = 0,
+        VECTORED = 1,
+    };
+    const mode = Mode.DIRECT;
+    const base_address: usize = @intFromPtr(&trap_stub) | @intFromEnum(mode);
+
+    asm volatile ("csrw mtvec, %[base]"
+        :
+        : [base] "r" (base_address),
+    );
+
+    // enable the handling of all (standard) interrupts by setting the first 16
+    // bits of mie
+    asm volatile ("csrw mie, %[enabled]"
+        :
+        : [enabled] "r" (0xffff),
+    );
+}
+
+// trap stub
+// we enter into this function in machine mode whenever a trap occurs
+// we need to save the interrupted process state, then call into the relevent
+// kernel trap handler, then return to the same or a new process
+// When we are in user-mode, we store a pointer to the currently running user
+// process in the mscratch csr
+fn trap_stub() align(4) callconv(.Naked) noreturn {
+    // NOTE: we don't need to disable interrupts whilst we handle a trap
+    //
+    // In riscv, when we're in user mode, any interrupt x traps to machine mode
+    // so long as the xth bit is set in the mie csr. When in machine mode, it's
+    // controlled by the MIE flag in the mstatus csr If we leave it unset, that
+    // means we'll never interrupt whilst handling an interrupt, as we handle
+    // traps in machine mode.
+    //
+    // We still need to handle exceptions that occur whilst handling the trap,
+    // but they shouldn't occur in bug-free handlers, so we'll just panic
+    //
+    // TODO: What about page faults? If a handler wants to copy something into
+    // userspace (ie. a string message) and that page isn't loaded yet
+    // How about the function that checks the validity of a userspace pointer
+    // also forces it to be paged in??
+    // Alternatively, whenever a function writes to user memory, perhaps it
+    // could temporarily change mtvec??
+
+    // extract the process saved array from mscratch, validate it, then write
+    // registers to it and enable the trap handling stack
+    const running: *process.Process = asm volatile (
+        \\ csrw sscratch, x31
+        // x31 saved to sscratch so we can get it back later
+        \\ csrr x31, mscratch
+        // as running pointer still in mscratch, we can trash the value in x31
+
+        // make sure pointer is in kernel space
+        // (ie. between 0x8000 0000 and 0xbfff ffff inclusive)
+        // if not, go to kernel_panic, which logs some info and halts
+
+        // as pointers are 32 bits, we're shifting out all but the last nibble
+        \\ srli x31, x31, 28
+        // then by subtracting 8, the range of values we want is 0 to 3
+        // inclusive, so we can just check if it's less than 4 unsigned
+        \\ addi x31, x31, -8
+        \\ sltiu x31, x31, 4
+        \\ beqz x31, invalid_running
+        // add the length of the struct (a page) to the base pointer and make
+        // sure that is in range as well
+        \\ csrr x31, mscratch
+        // addi x31, x31, %[off_stack] (ie. 4096)
+        // we have to do it in 3 lines because addi is limited to [-2048, 2047]
+        // 2047 + 2047 + 2 = 4096
+        \\ addi x31, x31, 2047
+        \\ addi x31, x31, 2047
+        \\ addi x31, x31, 2
+        // check in range 0x8000 0000 to 0xbfff ffff inclusive
+        \\ srli x31, x31, 28
+        \\ addi x31, x31, -8
+        \\ sltiu x31, x31, 4
+        \\ beqz x31, invalid_running
+
+        // check magic value in pointer struct
+        \\ csrr x31, mscratch
+        \\ lw x31, %[off_magic](x31)
+        \\ add x31, x31, -%[magic]
+        \\ bnez x31, invalid_running
+
+        // pointer to struct should be safe to save registers to now
+        \\ csrr x31, mscratch
+        // get pointer to saved array from retrieved process struct pointer
+        \\ addi x31, x31, %[off_saved]
+        // we've put one user register into mscratch, we'll retrieve it later
+        // save all registers into process saved array
+        \\ .irp reg,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30
+        \\ sw x\reg, (x31)
+        \\ addi x31, x31, 4
+        \\ .endr
+        // x31 now holds a pointer to the very last element of the array
+        // retrieve the original value of x31 and save it
+        \\ csrr x30, sscratch
+        \\ sw x30, (x31)
+        // subtract from x31 to get the base of the array
+        // x31 - x1 = 30 * 4bytes = 120 bytes
+        \\ addi x31, x31, -120
+        // from that, get the base pointer to the process struct
+        \\ addi x31, x31, -%[off_saved]
+        // write the pointer to the process back into mscratch
+        \\ csrw mscratch, x31
+
+        // switch to the per-process kernel stack
+        // this is so that the process can't screw with us by maliciously
+        // setting sp to point to some random part of memory before making a
+        // system call
+        // remember, stack starts from the end/high-end of a process and grows
+        // back/lower
+        \\ li x30, %[off_stack]
+        \\ add sp, x30, x31
+        : [process] "={x31}" (-> *process.Process),
+        : [off_saved] "i" (@offsetOf(process.Process, "saved")),
+          [off_stack] "i" (@sizeOf(process.Process)),
+          [off_magic] "i" (@offsetOf(process.Process, "magic")),
+          [magic] "i" (process.MAGIC),
+    );
+
+    // jump into zig handler
+    // it will get the type of trap that occurred and call into its handler
+    _ = asm volatile (
+        \\ jalr %[handler]
+        :
+        : [handler] "r" (&trap_handler),
+          [running] "{a0}" (running),
+          // this is jump into a function following C calling convention, so any
+          // caller-saved registers could be trashed
+          // these are listed in riscv-spec-20191213.pdf Chapter25
+        : "ra", "t0", "t1", "t2", "t3", "t4", "t5", "t6", "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"
+    );
+
+    // restore registers and go back to user mode
+    // if any scheduling occured, it has updated the pointer in mscratch, so
+    // we should restore from that rather than use running
+    _ = asm volatile (
+        \\ csrr x31, mscratch
+        // get pointer to saved array
+        \\ addi x31, x31, %[off_saved]
+        // read all registers from process saved array
+        \\ .irp reg,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30
+        \\ lw x\reg, (x31)
+        \\ addi x31, x31, 4
+        \\ .endr
+        // write to the last register
+        // not in loop so we don't add to the restored value
+        \\ lw x31, (x31)
+        // go back to user mode
+        \\ mret
+        :
+        : [off_saved] "i" (@offsetOf(process.Process, "saved")),
+    );
+
+    // we trapped but the process pointer stored in mscratch is either not in
+    // kernel space, or is missing the magic value, so call trap_panic
+    // we reset back to the kernel stack before jumping to avoid any other traps
+    // due to bad memory accesses
+
+    // because we may have come from a couple different points previously, tell
+    // llvm that all registers are trashed
+    _ = asm volatile (
+        \\ invalid_running:
+        ::: "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31");
+
+    _ = asm volatile (
+        \\ csrr a0, mepc
+        \\ csrr a1, mscratch
+        \\ jr %[trap_panic]
+        :
+        : [trap_panic] "r" (&trap_panic),
+          [stack] "{sp}" (&_stack_end),
+    );
+}
+
+// called into on every trap
+// logs the trap and causer, then calls into its handler
+fn trap_handler(running: *process.Process) callconv(.C) void {
+    // get what sort of trap occured
+    // msb is whether it's interrupt or trap, lowest 4 bits are the code
+    const mcause = asm volatile (
+        \\ csrr %[mcause], mcause
+        : [mcause] "=r" (-> u32),
+    );
+    const trap: Trap = @enumFromInt(@as(u4, @truncate(mcause)) |
+        (0b10000 & @as(u5, @truncate(mcause >> 27))));
+
+    // log trap and process that caused it
+    try uart.out.print("Recived {} from:\r\n", .{trap});
+    try process.print(running, uart.out);
+
+    // call into handler
+    if (handlers[@intFromEnum(trap)]) |handler| {
+        handler(running);
+    } else {
+        @panic("No handler for trap!");
+    }
+}
+
+// zig trap panic handler
+fn trap_panic(fault_addr: u32, running: u32) callconv(.C) noreturn {
+    uart.out.print(
+        "\r\nGot a fault at: 0x{x}\r\nmscratch had invalid value: 0x{x}\r\n",
+        .{ fault_addr, running },
+    ) catch unreachable;
+    @panic("Trap Panic!");
+}
