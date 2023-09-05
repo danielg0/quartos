@@ -1,3 +1,4 @@
+const std = @import("std");
 const StructList = @import("struct_list.zig").StructList;
 
 const NAME_LEN = 16;
@@ -54,4 +55,14 @@ pub fn name(comptime literal: []const u8) Name {
         arr[i] = c;
     }
     return arr;
+}
+
+// print out a process
+// we have to write our own because the definition of Process contains
+// structlist elems, which are recursive
+pub fn print(process: *const Process, writer: anytype) !void {
+    try writer.print(
+        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  saved: {any}\r\n",
+        .{ process.id, process.name, process.state, process.saved },
+    );
 }
