@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     // Set target to baremetal riscv32
     const target = std.zig.CrossTarget.parse(.{
         .arch_os_abi = "riscv32-freestanding",
+        .cpu_features = "generic_rv32+m+a+c",
+        // we also use the zicsr extension for modifying CSRs in assembly blocks
     }) catch unreachable;
 
     // Standard optimization options allow the person running `zig build` to select
