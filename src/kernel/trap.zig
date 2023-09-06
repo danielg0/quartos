@@ -242,6 +242,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         :
         : [trap_panic] "r" (&trap_panic),
           [stack] "{sp}" (&_stack_end),
+        : "a0", "a1"
     );
 }
 
