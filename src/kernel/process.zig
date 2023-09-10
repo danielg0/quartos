@@ -44,6 +44,19 @@ comptime {
         @compileLog("sizeOf(Page): ", std.mem.page_size);
         @compileError("Process struct is not the same size as a page");
     }
+
+    // also do a double check that the process stack is at the end of the
+    // struct. zig doesn't have to keep it this way, but I can't think of a nice
+    // way to make it
+    if (@offsetOf(Process, "stack") + Process.STACK_SIZE + 1 != std.mem.page_size) {
+        @compileLog(std.mem.page_size);
+        @compileLog("The offsets of every member are:");
+        inline for (@typeInfo(Process).Struct.fields) |field| {
+            @compileLog(field.name, @offsetOf(Process, field.name));
+        }
+
+        @compileError("Process stack isn't at the end of the struct");
+    }
 }
 
 // convert a comptime u8 slice (ie. a string literal), to a process name
