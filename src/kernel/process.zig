@@ -1,5 +1,6 @@
 const std = @import("std");
 const StructList = @import("struct_list.zig").StructList;
+const paging = @import("paging.zig");
 
 const NAME_LEN = 16;
 const Name = [NAME_LEN]u8;
@@ -28,6 +29,9 @@ pub const Process = struct {
     allelem: StructList.Elem = .{},
     elem: StructList.Elem = .{},
 
+    // pointer to this process' root page table
+    page_table: paging.PageTablePtr,
+
     // magic value we can check for when given a process pointer to check that
     // it's valid (probably)
     magic: u32 = MAGIC,
@@ -37,7 +41,7 @@ pub const Process = struct {
     // kernel-wide trap stack. If we only ever handle one trap at a time, surely
     // we only need one trap stack?
     stack: [STACK_SIZE]u8 = [_]u8{0} ** STACK_SIZE,
-    const STACK_SIZE = 3920;
+    const STACK_SIZE = 3916;
 };
 
 // we want to keep the size of the process struct equal to a page of memory

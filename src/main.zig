@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = std.builtin;
 
 const fdtb = @import("boot/fdtb.zig");
+const paging = @import("kernel/paging.zig");
 const process = @import("kernel/process.zig");
 const timer = @import("kernel/timer.zig");
 const trap = @import("kernel/trap.zig");
@@ -39,44 +40,78 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
 // kernel main function
 // initialises kernel data structures and kickstarts core services
 fn main() !void {
+    // initialise trap handling - should be first thing we do so we get errors
+    // if something fails during initialisation
+    trap.init();
+
     try uart.out.writeAll("Welcome to QuartOS\r\n");
 
     // initialise ready process and page lists
 
-    // initialise trap handling
     timer.init();
     defer timer.deinit();
 
-    trap.init();
+    paging.init();
 
     // start required processes
 
     // set up a dummy idle process
-    // TODO: move its source elsewhere?
+    // create root page
+    const pt = try paging.createRoot();
+
+    // create page for code
+    const code_va = 0x80000000;
+    const code_pa = try paging.createPage(pt, code_va - 0x4000);
+    try paging.setMapping(pt, code_va, code_pa);
+    @memcpy(@as([*]u8, @ptrFromInt(@as(usize, @truncate(code_pa))))[0..1024], @as([*]const u8, @ptrCast(&idle)));
+
+    // create mapping for uart
+    const uart_va = 0x80001000;
+    const uart_pa = 0x10000000;
+    try paging.setMapping(pt, uart_va, uart_pa);
+
     var p: process.Process = .{
         .id = 0,
         .name = process.name("idle"),
         .state = .RUNNING,
+        .page_table = pt,
     };
 
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
+
+    const Satp = packed struct(u32) {
+        ppn: u22,
+        asid: u9,
+        mode: u1,
+    };
+    const satp = Satp{
+        .mode = 1,
+        .asid = 0,
+        .ppn = @truncate(@intFromPtr(pt) >> 12),
+    };
+
+    try uart.out.print("Satp: {x}\r\n", .{@as(u32, @bitCast(satp))});
 
     // attempt to go into user mode
     _ = asm volatile (
         \\ csrw mepc, %[pc]
         // ^ setup initial program counter of user program
 
-        // save pointer to process to mscratch
-        \\ csrw mscratch, %[running]
+        // set virtual mapping
+        \\ csrw satp, %[root]
 
         // disable memory protection (TODO: remove this)
         \\ csrwi pmpcfg0, 0x1f
         \\ li t0, -1
         \\ csrw pmpaddr0, t0
 
-        // disable virtual memory (TODO: remove this)
-        \\ csrwi satp, 0
+        // fence here after disabling memory protection
+        // as speculative lookup of page tree could occur
+        \\ sfence.vma
+
+        // save pointer to process to mscratch
+        \\ csrw mscratch, %[running]
 
         // set which privilege mode to go to
         \\ li t0, 0x1800
@@ -85,15 +120,36 @@ fn main() !void {
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (&idle),
+        : [pc] "r" (code_va),
           [running] "r" (&p),
+          [root] "r" (satp),
         : "t0"
     );
 }
 
-fn idle() noreturn {
-    try uart.out.writeAll("Hi from idle\r\n");
-    while (true) {}
+// simple idle function
+// handwritten so I can specify addresses
+fn idle() callconv(.Naked) noreturn {
+    _ = asm volatile (
+        \\ li a5, 0x80001000
+        \\ nop
+        // write "hello"
+        \\ li a4, 104
+        \\ sb a4, 0(a5)
+        \\ li a4, 101
+        \\ sb a4, 0(a5)
+        \\ li a4, 108
+        \\ sb a4, 0(a5)
+        \\ sb a4, 0(a5)
+        \\ li a4, 111
+        \\ sb a4, 0(a5)
+        \\ li a4, 13
+        \\ sb a4, 0(a5)
+        \\ li a4, 10
+        \\ sb a4, 0(a5)
+        // loop forever
+        \\ jal 0
+    );
 }
 
 pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?usize) noreturn {
