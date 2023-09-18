@@ -271,8 +271,17 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
     const trap: Trap = @enumFromInt(@as(u4, @truncate(mcause)) |
         (0b10000 & @as(u5, @truncate(mcause >> 27))));
 
+    // get the level we were at when we trapped
+    const level = asm volatile (
+        \\ csrr %[mpp], mstatus
+        \\ srai %[mpp], %[mpp], 11
+        \\ andi %[mpp], %[mpp], 3
+        : [mpp] "=r" (-> u2),
+    );
+
     // log trap and process that caused it
-    try uart.out.print("Recived {} from:\r\n", .{trap});
+    try uart.out.print("Recived {} at level {d}:\r\n", .{ trap, level });
+    try uart.out.writeAll("mscratch holds ");
     try process.print(running, uart.out);
 
     // call into handler
