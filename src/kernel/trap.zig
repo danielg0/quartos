@@ -2,8 +2,10 @@ const process = @import("process.zig");
 const std = @import("std");
 const uart = @import("uart.zig");
 
+// linker symbol for beginning of kernel stack
+// take the address of it, to get the value
 // defined in boot/virt.ld
-extern const _stack_end: *u32;
+extern const _stack_end: *anyopaque;
 
 // in RISCV, traps have two types of causes, interrupts and exceptions. We want
 // to be able to register handlers for both types (eg. a software interrupt is
@@ -175,6 +177,10 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         // write the pointer to the process back into mscratch
         \\ csrw mscratch, x31
 
+        // save the address that cause the fault into the process structure
+        \\ csrr x30, mepc
+        \\ sw x30, %[off_fault_addr](x31)
+
         // switch to the per-process kernel stack
         // this is so that the process can't screw with us by maliciously
         // setting sp to point to some random part of memory before making a
@@ -187,6 +193,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         : [off_saved] "i" (@offsetOf(process.Process, "saved")),
           [off_stack] "i" (@sizeOf(process.Process)),
           [off_magic] "i" (@offsetOf(process.Process, "magic")),
+          [off_fault_addr] "i" (@offsetOf(process.Process, "fault_addr")),
           [magic] "i" (process.MAGIC),
     );
 
@@ -208,6 +215,10 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
     // we should restore from that rather than use running
     _ = asm volatile (
         \\ csrr x31, mscratch
+        // restore pc from process struct
+        \\ lw x30, %[off_fault_addr](x31)
+        \\ csrw mepc, x30
+
         // get pointer to saved array
         \\ addi x31, x31, %[off_saved]
         // read all registers from process saved array
@@ -222,6 +233,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         \\ mret
         :
         : [off_saved] "i" (@offsetOf(process.Process, "saved")),
+          [off_fault_addr] "i" (@offsetOf(process.Process, "fault_addr")),
     );
 
     // we trapped but the process pointer stored in mscratch is either not in
@@ -231,6 +243,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
 
     // because we may have come from a couple different points previously, tell
     // llvm that all registers are trashed
+    const stack_end: [*]u8 = @ptrCast(&_stack_end);
     _ = asm volatile (
         \\ invalid_running:
         ::: "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31");
@@ -241,7 +254,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         \\ jr %[trap_panic]
         :
         : [trap_panic] "r" (&trap_panic),
-          [stack] "{sp}" (&_stack_end),
+          [stack] "{sp}" (stack_end),
         : "a0", "a1"
     );
 }

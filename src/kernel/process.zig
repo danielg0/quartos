@@ -21,6 +21,9 @@ pub const Process = struct {
     // holds registers whilst this process isn't running
     saved: [31]usize = [_]usize{0} ** 31,
 
+    // address we faulted on in virtual address space
+    fault_addr: u32 = 0,
+
     // list elements for the all processes and ready/blocked lists
     allelem: StructList.Elem = .{},
     elem: StructList.Elem = .{},
@@ -34,7 +37,7 @@ pub const Process = struct {
     // kernel-wide trap stack. If we only ever handle one trap at a time, surely
     // we only need one trap stack?
     stack: [STACK_SIZE]u8 = [_]u8{0} ** STACK_SIZE,
-    const STACK_SIZE = 3924;
+    const STACK_SIZE = 3920;
 };
 
 // we want to keep the size of the process struct equal to a page of memory
@@ -75,7 +78,7 @@ pub fn name(comptime literal: []const u8) Name {
 // structlist elems, which are recursive
 pub fn print(process: *const Process, writer: anytype) !void {
     try writer.print(
-        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  saved: {any}\r\n",
-        .{ process.id, process.name, process.state, process.saved },
+        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  fault address: 0x{x}\r\n  saved: {any}\r\n",
+        .{ process.id, process.name, process.state, process.fault_addr, process.saved },
     );
 }
