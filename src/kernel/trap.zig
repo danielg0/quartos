@@ -1,3 +1,4 @@
+const paging = @import("paging.zig");
 const process = @import("process.zig");
 const std = @import("std");
 const uart = @import("uart.zig");
@@ -284,12 +285,15 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
     try uart.out.writeAll("mscratch holds ");
     try process.print(running, uart.out);
 
-    // call into handler
-    if (handlers[@intFromEnum(trap)]) |handler| {
-        handler(running);
-    } else {
-        @panic("No handler for trap!");
-    }
+    // call into handler, getting next process to run
+    const handler = handlers[@intFromEnum(trap)] orelse @panic("No handler for trap!");
+    handler(running);
+
+    // reload the page table for whatever process runs next
+    const next = asm ("csrr %[next], mscratch"
+        : [next] "=r" (-> *process.Process),
+    );
+    paging.enable(next.page_table);
 }
 
 // zig trap panic handler

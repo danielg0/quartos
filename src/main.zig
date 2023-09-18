@@ -80,26 +80,12 @@ fn main() !void {
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
 
-    const Satp = packed struct(u32) {
-        ppn: u22,
-        asid: u9,
-        mode: u1,
-    };
-    const satp = Satp{
-        .mode = 1,
-        .asid = 0,
-        .ppn = @truncate(@intFromPtr(pt) >> 12),
-    };
-
-    try uart.out.print("Satp: {x}\r\n", .{@as(u32, @bitCast(satp))});
+    paging.enable(pt);
 
     // attempt to go into user mode
     _ = asm volatile (
         \\ csrw mepc, %[pc]
         // ^ setup initial program counter of user program
-
-        // set virtual mapping
-        \\ csrw satp, %[root]
 
         // disable memory protection (TODO: remove this)
         \\ csrwi pmpcfg0, 0x1f
@@ -107,7 +93,7 @@ fn main() !void {
         \\ csrw pmpaddr0, t0
 
         // fence here after disabling memory protection
-        // as speculative lookup of page tree could occur
+        // as it could modify whether page faults occur
         \\ sfence.vma
 
         // save pointer to process to mscratch
@@ -122,7 +108,6 @@ fn main() !void {
         :
         : [pc] "r" (code_va),
           [running] "r" (&p),
-          [root] "r" (satp),
         : "t0"
     );
 }

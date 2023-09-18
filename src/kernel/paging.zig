@@ -121,6 +121,35 @@ var page_allocator: pool.MemoryPoolAligned(Page, std.mem.page_size) = undefined;
 var fba: std.heap.FixedBufferAllocator = undefined;
 var pages: []u8 = undefined;
 
+// satp is a CSR used for specifying the paging mode and root page table
+const Satp = packed struct(u32) {
+    // page number doesn't need to be specified when paging disabled
+    page_no: u22 = 0,
+    // asid allow for selective vfence-ing, but I don't currently use it
+    asid: u9 = 0,
+    sv32_enabled: bool,
+};
+
+// enable or disable paging
+pub fn enable(root: PageTablePtr) void {
+    // extend root table pointer to get physical address
+    const phys: PhysAddr = @bitCast(@as(u34, @intFromPtr(root)));
+    asm volatile (
+        \\ csrw satp, %[satp]
+        \\ sfence.vma
+        :
+        : [satp] "r" (Satp{ .page_no = phys.page_no, .sv32_enabled = true }),
+    );
+}
+pub fn disable() void {
+    asm volatile (
+        \\ csrw satp, %[satp]
+        \\ sfence.vma
+        :
+        : [satp] "r" (Satp{ .sv32_enabled = false }),
+    );
+}
+
 // internal helper function to get a PTE corresponding to a virtual address
 // create controls whether a missing level two page table will be allocated
 // when create is set, null is never returned, but errors will be thrown if
