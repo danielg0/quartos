@@ -47,7 +47,8 @@ const PTEntry = packed struct(u32) {
 // page table entry smart constructors for leaf/non-leaf nodes
 fn leaf(page: u34, r: bool, w: bool, x: bool, u: bool) PTEntry {
     // check for non-leaf and reserved encodings
-    assert(r or (x and !w));
+    if (!(r or (x and !w)))
+        @panic("Invalid permissions on page table leaf entry");
 
     // get ppn and assert offset zero (ie. page is page-aligned)
     const phys: PhysAddr = @bitCast(page);
@@ -156,9 +157,7 @@ pub fn disable() void {
 // allocation fails
 // when create isn't set, errors never occur, but null will be returned if a
 // level two page table is missing
-fn getPTE(root: PageTablePtr, va: u32, create: bool) pool.MemoryPoolError!?*PTEntry {
-    const virt_addr: VirtAddr = @bitCast(va);
-
+fn getPTE(root: PageTablePtr, virt_addr: VirtAddr, create: bool) pool.MemoryPoolError!?*PTEntry {
     // variable for the page table we're currently on, initially the root pt
     var pt = root;
 
@@ -228,9 +227,10 @@ pub fn physFromVirt(root: PageTablePtr, va: u32) ?u34 {
     }
 }
 
-// create a page at a given virtual address, and return its physical address
-// if it already exists, return the existing page's address
-pub fn createPage(root: PageTablePtr, va: u32) pool.MemoryPoolError!u34 {
+// create a page at a given virtual address with given permissions, and return
+// its physical address if it already exists, return the existing page's address
+pub fn createPage(root: PageTablePtr, virt_addr: u32, r: bool, w: bool, x: bool, u: bool) pool.MemoryPoolError!u34 {
+    const va: VirtAddr = @bitCast(virt_addr);
     // get pte by traversing tree
     const pte = try getPTE(root, va, true);
 
@@ -243,9 +243,20 @@ pub fn createPage(root: PageTablePtr, va: u32) pool.MemoryPoolError!u34 {
             @memset(user_page, 0);
 
             // write new user-mode leaf to page table that is read/write/executable
-            p.* = leaf(@intFromPtr(user_page), true, true, true, true);
+            p.* = leaf(@intFromPtr(user_page), r, w, x, u);
+        } else {
+            // if it already exists, we need to update the leaf's permissions
+            // combining both those that're already there and those given here
+            const phys: PhysAddr = .{ .page_no = p.page_no, .offset = 0 };
+            p.* = leaf(
+                @bitCast(phys),
+                p.readable or r,
+                p.writeable or w,
+                p.executable or x,
+                p.user_mode or u,
+            );
         }
-        return @bitCast(physAddr(@bitCast(va), p));
+        return @bitCast(physAddr(va, p));
     } else {
         @panic("Got null from getPTE");
     }
@@ -257,9 +268,9 @@ pub fn createPage(root: PageTablePtr, va: u32) pool.MemoryPoolError!u34 {
 // TODO: reconsider this whole function, there's a bunch of ways for it
 // to break, we should probably provide a different abstraction for driver
 // programs
-pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34) pool.MemoryPoolError!void {
+pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34, r: bool, w: bool, x: bool, u: bool) pool.MemoryPoolError!void {
     // get pte for that va
-    var pte = try getPTE(root, va, true);
+    var pte = try getPTE(root, @bitCast(va), true);
 
     if (pte) |p| {
         if (p.valid) {
@@ -270,8 +281,10 @@ pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34) pool.MemoryPoolErro
                 page_allocator.destroy(page);
             }
         }
-        // write new user-mode leaf to page table that is read/write/executable
-        p.* = leaf(page_no, true, true, true, true);
+        // write new user-mode leaf to page table
+        // we don't combine permissions because this is potentially a mapping to
+        // a whole new page
+        p.* = leaf(page_no, r, w, x, u);
     } else {
         // we set create to true in the call to getPTE, this shouldn't occur
         @panic("Got null from getPTE");

@@ -61,14 +61,13 @@ fn main() !void {
 
     // create page for code
     const code_va = 0x80000000;
-    const code_pa = try paging.createPage(pt, code_va - 0x4000);
-    try paging.setMapping(pt, code_va, code_pa);
+    const code_pa = try paging.createPage(pt, code_va, false, false, true, true);
     @memcpy(@as([*]u8, @ptrFromInt(@as(usize, @truncate(code_pa))))[0..1024], @as([*]const u8, @ptrCast(&idle)));
 
     // create mapping for uart
     const uart_va = 0x80001000;
     const uart_pa = 0x10000000;
-    try paging.setMapping(pt, uart_va, uart_pa);
+    try paging.setMapping(pt, uart_va, uart_pa, true, true, false, true);
 
     var p: process.Process = .{
         .id = 0,
