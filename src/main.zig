@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = std.builtin;
 
+const elf = @import("kernel/elf.zig");
 const fdtb = @import("boot/fdtb.zig");
 const paging = @import("kernel/paging.zig");
 const process = @import("kernel/process.zig");
@@ -47,7 +48,6 @@ fn main() !void {
     try uart.out.writeAll("Welcome to QuartOS\r\n");
 
     // initialise ready process and page lists
-
     timer.init();
     defer timer.deinit();
 
@@ -55,31 +55,52 @@ fn main() !void {
 
     // start required processes
 
+    // page address of uart (we map this a couple times)
+    const uart_pa = 0x10000000;
+
     // set up a dummy idle process
     // create root page
-    const pt = try paging.createRoot();
-
+    const idle_pt = try paging.createRoot();
     // create page for code
-    const code_va = 0x80000000;
-    const code_pa = try paging.createPage(pt, code_va, false, false, true, true);
-    @memcpy(@as([*]u8, @ptrFromInt(@as(usize, @truncate(code_pa))))[0..1024], @as([*]const u8, @ptrCast(&idle)));
-
+    const idle_code_va = 0x80000000;
+    const idle_code_pa = try paging.createPage(idle_pt, idle_code_va, false, false, true, true);
+    // copy code into idle's memory
+    @memcpy(@as([*]u8, @ptrFromInt(@as(usize, @truncate(idle_code_pa))))[0..1024], @as([*]const u8, @ptrCast(&idle_bin)));
     // create mapping for uart
-    const uart_va = 0x80001000;
-    const uart_pa = 0x10000000;
-    try paging.setMapping(pt, uart_va, uart_pa, true, true, false, true);
-
-    var p: process.Process = .{
-        .id = 0,
+    const idle_uart = 0x80001000;
+    try paging.setMapping(idle_pt, idle_uart, uart_pa, true, true, false, true);
+    var idle: process.Process = .{
+        .id = 1,
         .name = process.name("idle"),
-        .state = .RUNNING,
-        .page_table = pt,
+        .state = .READY,
+        .page_table = idle_pt,
+        .fault_addr = idle_code_va,
     };
+
+    // a hello world C program
+    const hello_binary = @embedFile("user/programs/hello");
+    const hello_pt = try paging.createRoot();
+    // load code into memory
+    const hello_entry = try elf.load(hello_pt, hello_binary);
+    // setup uart
+    const hello_uart = 0x5000;
+    try paging.setMapping(hello_pt, hello_uart, uart_pa, true, true, false, true);
+    var hello: process.Process = .{
+        .id = 2,
+        .name = process.name("hello"),
+        .state = .READY,
+        .page_table = hello_pt,
+        .fault_addr = hello_entry,
+    };
+
+    // select the process to run first
+    const init = hello;
+    _ = idle;
 
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
 
-    paging.enable(pt);
+    paging.enable(init.page_table);
 
     // attempt to go into user mode
     _ = asm volatile (
@@ -105,15 +126,15 @@ fn main() !void {
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (code_va),
-          [running] "r" (&p),
+        : [pc] "r" (init.fault_addr),
+          [running] "r" (&init),
         : "t0"
     );
 }
 
 // simple idle function
 // handwritten so I can specify addresses
-fn idle() callconv(.Naked) noreturn {
+fn idle_bin() callconv(.Naked) noreturn {
     _ = asm volatile (
         \\ li a5, 0x80001000
         \\ nop
