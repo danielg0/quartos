@@ -53,6 +53,8 @@ pub fn build(b: *std.Build) void {
         cores,
         "-machine",
         "virt",
+        "-m",
+        "128M",
         "-bios",
         "none",
         "-kernel",
