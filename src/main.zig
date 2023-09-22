@@ -130,6 +130,9 @@ fn main() !void {
           [running] "r" (&init),
         : "t0"
     );
+
+    // we should never get back here, any traps in future should goto trap stub
+    unreachable;
 }
 
 // simple idle function
