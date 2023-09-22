@@ -1,0 +1,3 @@
+# C binaries & object files
+hello
+*.o

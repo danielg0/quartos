@@ -30,6 +30,20 @@ pub fn build(b: *std.Build) void {
     exe.setLinkerScript(.{ .path = "src/boot/virt.ld" });
     b.installArtifact(exe);
 
+    // Build user programs to run on QuartOS
+    // Runs a Makefile in src/user/programs
+    // TODO: Build using Zig as well?
+    const make_path = "make";
+    const make_jobs = "4";
+    const userprogs_path = "src/user/programs";
+    const userprogs_build = b.addSystemCommand(&[_][]const u8{ make_path, "--quiet", "-j", make_jobs });
+    userprogs_build.cwd = userprogs_path;
+    userprogs_build.has_side_effects = true;
+    exe.step.dependOn(&userprogs_build.step);
+    const userprogs_clean = b.addSystemCommand(&[_][]const u8{ make_path, "--quiet", "clean" });
+    userprogs_clean.cwd = userprogs_path;
+    userprogs_clean.has_side_effects = true;
+
     // Run kernel using QEMU
     const qemu_path = "qemu-system-riscv32";
     const cores = "4";
@@ -47,6 +61,9 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Boot the kernel in QEMU");
     run_step.dependOn(&qemu_run.step);
+
+    const clean_step = b.step("clean", "Clean up user programs");
+    clean_step.dependOn(&userprogs_clean.step);
 
     // Flag to run kernel in QEMU with gdb debugging
     const gdb = b.option(bool, "gdb", "Start QEMU with GDB debugging enabled");
