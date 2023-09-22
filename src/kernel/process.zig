@@ -23,7 +23,8 @@ pub const Process = struct {
     saved: [31]usize = [_]usize{0} ** 31,
 
     // address we faulted on in virtual address space
-    fault_addr: u32 = 0,
+    // also it's initial entry point
+    fault_addr: u32,
 
     // list elements for the all processes and ready/blocked lists
     allelem: StructList.Elem = .{},
