@@ -123,11 +123,24 @@ fn main() !void {
         \\ li t0, 0x1800
         \\ csrc mstatus, t0
 
+        // read initial register values from saved array
+        // this needs to be the last thing we do because it trashes every reg
+        \\ addi x31, x31, %[off_saved]
+        // read all registers from process saved array
+        \\ .irp reg,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30
+        \\ lw x\reg, (x31)
+        \\ addi x31, x31, 4
+        \\ .endr
+        // write to the last register
+        // not in loop so we don't add to the restored value
+        \\ lw x31, (x31)
+
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (init.fault_addr),
-          [running] "r" (&init),
+        : [pc] "r" (hello.fault_addr),
+          [running] "{x31}" (&hello),
+          [off_saved] "i" (@offsetOf(process.Process, "saved")),
         : "t0"
     );
 

@@ -190,6 +190,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         // back/lower
         \\ li x30, %[off_stack]
         \\ add sp, x30, x31
+        \\ mv fp, sp
         : [process] "={x31}" (-> *process.Process),
         : [off_saved] "i" (@offsetOf(process.Process, "saved")),
           [off_stack] "i" (@sizeOf(process.Process)),
