@@ -2,6 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const pool = @import("memory_pool.zig");
+const process = @import("process.zig");
+const trap = @import("trap.zig");
 const uart = @import("uart.zig");
 
 // Implement an interface to the Sv32 Virtual-Memory System
@@ -97,7 +99,7 @@ extern const _heap_size: *anyopaque;
 
 // initialise paging system
 // setup allocators for pages
-pub fn init() void {
+pub fn init() !void {
     // setup the allocator for kernel pages
     // I'm targetting virt with <1GB of memory, so all of physical memory should
     // be addressable with 32 bits, which is needed for fixed buffer allocator
@@ -114,6 +116,16 @@ pub fn init() void {
     pages = heap_start[0..heap_size];
     fba = std.heap.FixedBufferAllocator.init(pages);
     page_allocator = @TypeOf(page_allocator).init(fba.allocator());
+
+    // setup this system as the handler for page fault traps so that we can
+    // allocate more pages to a process as its stack grows
+    // we use errdefers to ensure we either get all handlers, or none of them
+    try trap.register(.InstrPageFault, &fault_handler);
+    errdefer trap.unregister(.InstrPageFault);
+    try trap.register(.LoadPageFault, &fault_handler);
+    errdefer trap.unregister(.LoadPageFault);
+    try trap.register(.StorePageFault, &fault_handler);
+    errdefer trap.unregister(.StorePageFault);
 }
 
 // TODO: replace with a zig standard library aligned memory pool once zig issue #16883
@@ -289,4 +301,39 @@ pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34, r: bool, w: bool, x
         // we set create to true in the call to getPTE, this shouldn't occur
         @panic("Got null from getPTE");
     }
+}
+
+// page fault handler
+// if it occurred at an address in the process stack, and the stack is smaller
+// than the max stack, allocate an extra page for the process
+// else, output some more information about why the page fault occurred
+// this max stack value (8MiB) is taken from pintos
+const max_stack = 8 * std.math.pow(usize, 1024, 2);
+fn fault_handler(running: *process.Process) callconv(.C) void {
+    const sp = running.saved[1];
+
+    // determine if access was in stack
+    if (running.fault_cause >= sp) {
+        // check process stack isn't too big
+        // remember stack grows up from the bottom of memory
+        if (sp >= (std.math.maxInt(usize) - max_stack)) {
+            // try to allocate a new page
+            // if we fail, fall out the loop and kill process
+            _ = createPage(
+                running.page_table,
+                running.fault_cause,
+                // stacks get read and write privileges, but not execution
+                true,
+                true,
+                false,
+                true,
+            ) catch
+                @panic("Couldn't create page to avoid page fault");
+            return;
+        }
+    }
+
+    // if we haven't returned at this point kill the process
+    // TODO: process killing
+    @panic("Process made a page fault and should be killed");
 }

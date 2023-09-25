@@ -49,9 +49,10 @@ fn main() !void {
 
     // initialise ready process and page lists
     timer.init();
+    // TODO: this defer does nothing because we leave this function via assembly
     defer timer.deinit();
 
-    paging.init();
+    try paging.init();
 
     // start required processes
 
