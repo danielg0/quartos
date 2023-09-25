@@ -310,13 +310,11 @@ pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34, r: bool, w: bool, x
 // this max stack value (8MiB) is taken from pintos
 const max_stack = 8 * std.math.pow(usize, 1024, 2);
 fn fault_handler(running: *process.Process) callconv(.C) void {
-    const sp = running.saved[1];
-
     // determine if access was in stack
-    if (running.fault_cause >= sp) {
+    if (running.fault_cause >= running.saved.sp) {
         // check process stack isn't too big
         // remember stack grows up from the bottom of memory
-        if (sp >= (std.math.maxInt(usize) - max_stack)) {
+        if (running.saved.sp >= (std.math.maxInt(usize) - max_stack)) {
             // try to allocate a new page
             // if we fail, fall out the loop and kill process
             _ = createPage(

@@ -7,6 +7,43 @@ const Name = [NAME_LEN]u8;
 
 pub const MAGIC = 0x242;
 
+// define riscv registers saved
+// TODO: move to riscv.zig file?
+// extern to ensure a specific ordering
+pub const Registers = extern struct {
+    ra: u32 = 0,
+    sp: u32 = 0,
+    gp: u32 = 0,
+    tp: u32 = 0,
+    t0: u32 = 0,
+    t1: u32 = 0,
+    t2: u32 = 0,
+    s0: u32 = 0,
+    s1: u32 = 0,
+    a0: u32 = 0,
+    a1: u32 = 0,
+    a2: u32 = 0,
+    a3: u32 = 0,
+    a4: u32 = 0,
+    a5: u32 = 0,
+    a6: u32 = 0,
+    a7: u32 = 0,
+    s2: u32 = 0,
+    s3: u32 = 0,
+    s4: u32 = 0,
+    s5: u32 = 0,
+    s6: u32 = 0,
+    s7: u32 = 0,
+    s8: u32 = 0,
+    s9: u32 = 0,
+    s10: u32 = 0,
+    s11: u32 = 0,
+    t3: u32 = 0,
+    t4: u32 = 0,
+    t5: u32 = 0,
+    t6: u32 = 0,
+};
+
 pub const Process = struct {
     pub const State = enum {
         RUNNING,
@@ -20,7 +57,7 @@ pub const Process = struct {
     state: State,
 
     // holds registers whilst this process isn't running
-    saved: [31]usize = [_]usize{0} ** 31,
+    saved: Registers = .{},
 
     // address we faulted on in virtual address space
     // also the process' initial entry point
