@@ -74,8 +74,9 @@ fn main() !void {
         .name = process.name("idle"),
         .state = .READY,
         .page_table = idle_pt,
-        .fault_addr = idle_code_va,
+        .pc = idle_code_va,
     };
+    _ = idle;
 
     // a hello world C program
     const hello_binary = @embedFile("user/programs/hello");
@@ -90,17 +91,13 @@ fn main() !void {
         .name = process.name("hello"),
         .state = .READY,
         .page_table = hello_pt,
-        .fault_addr = hello_entry,
+        .pc = hello_entry,
     };
-
-    // select the process to run first
-    const init = hello;
-    _ = idle;
 
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
 
-    paging.enable(init.page_table);
+    paging.enable(hello.page_table);
 
     // attempt to go into user mode
     _ = asm volatile (
@@ -138,7 +135,7 @@ fn main() !void {
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (hello.fault_addr),
+        : [pc] "r" (hello.pc),
           [running] "{x31}" (&hello),
           [off_saved] "i" (@offsetOf(process.Process, "saved")),
         : "t0"

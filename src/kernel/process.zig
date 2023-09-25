@@ -23,8 +23,12 @@ pub const Process = struct {
     saved: [31]usize = [_]usize{0} ** 31,
 
     // address we faulted on in virtual address space
-    // also it's initial entry point
-    fault_addr: u32,
+    // also the process' initial entry point
+    pc: usize,
+
+    // fault cause address
+    // eg. for page faults this holds the address in memory we tried to access
+    fault_cause: usize = 0,
 
     // list elements for the all processes and ready/blocked lists
     allelem: StructList.Elem = .{},
@@ -42,7 +46,7 @@ pub const Process = struct {
     // kernel-wide trap stack. If we only ever handle one trap at a time, surely
     // we only need one trap stack?
     stack: [STACK_SIZE]u8 = [_]u8{0} ** STACK_SIZE,
-    const STACK_SIZE = 3916;
+    pub const STACK_SIZE = 3912;
 };
 
 // we want to keep the size of the process struct equal to a page of memory
@@ -57,6 +61,8 @@ comptime {
     // struct. zig doesn't have to keep it this way, but I can't think of a nice
     // way to make it
     if (@offsetOf(Process, "stack") + Process.STACK_SIZE + 1 != std.mem.page_size) {
+        @compileLog(@offsetOf(Process, "stack"));
+        @compileLog(Process.STACK_SIZE);
         @compileLog(std.mem.page_size);
         @compileLog("The offsets of every member are:");
         inline for (@typeInfo(Process).Struct.fields) |field| {
@@ -83,7 +89,7 @@ pub fn name(comptime literal: []const u8) Name {
 // structlist elems, which are recursive
 pub fn print(process: *const Process, writer: anytype) !void {
     try writer.print(
-        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  fault address: 0x{x}\r\n  saved: {any}\r\n",
-        .{ process.id, process.name, process.state, process.fault_addr, process.saved },
+        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  program counter: 0x{x}\r\n  fault cause: 0x{x}\r\n  saved: {any}\r\n",
+        .{ process.id, process.name, process.state, process.pc, process.fault_cause, process.saved },
     );
 }

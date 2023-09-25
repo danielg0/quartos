@@ -180,7 +180,9 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
 
         // save the address that cause the fault into the process structure
         \\ csrr x30, mepc
-        \\ sw x30, %[off_fault_addr](x31)
+        \\ sw x30, %[off_pc](x31)
+        \\ csrr x30, mtval
+        \\ sw x30, %[off_fault_cause](x31)
 
         // switch to the per-process kernel stack
         // this is so that the process can't screw with us by maliciously
@@ -195,7 +197,8 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         : [off_saved] "i" (@offsetOf(process.Process, "saved")),
           [off_stack] "i" (@sizeOf(process.Process)),
           [off_magic] "i" (@offsetOf(process.Process, "magic")),
-          [off_fault_addr] "i" (@offsetOf(process.Process, "fault_addr")),
+          [off_pc] "i" (@offsetOf(process.Process, "pc")),
+          [off_fault_cause] "i" (@offsetOf(process.Process, "fault_cause")),
           [magic] "i" (process.MAGIC),
     );
 
@@ -218,7 +221,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
     _ = asm volatile (
         \\ csrr x31, mscratch
         // restore pc from process struct
-        \\ lw x30, %[off_fault_addr](x31)
+        \\ lw x30, %[off_pc](x31)
         \\ csrw mepc, x30
 
         // get pointer to saved array
@@ -235,7 +238,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         \\ mret
         :
         : [off_saved] "i" (@offsetOf(process.Process, "saved")),
-          [off_fault_addr] "i" (@offsetOf(process.Process, "fault_addr")),
+          [off_pc] "i" (@offsetOf(process.Process, "pc")),
     );
 
     // we trapped but the process pointer stored in mscratch is either not in
@@ -298,10 +301,10 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
 }
 
 // zig trap panic handler
-fn trap_panic(fault_addr: u32, running: u32) callconv(.C) noreturn {
+fn trap_panic(pc: u32, running: u32) callconv(.C) noreturn {
     uart.out.print(
         "\r\nGot a fault at: 0x{x}\r\nmscratch had invalid value: 0x{x}\r\n",
-        .{ fault_addr, running },
+        .{ pc, running },
     ) catch unreachable;
     @panic("Trap Panic!");
 }
