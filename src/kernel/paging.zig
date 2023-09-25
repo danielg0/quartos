@@ -206,7 +206,7 @@ fn getPTE(root: PageTablePtr, virt_addr: VirtAddr, create: bool) pool.MemoryPool
 // create a root page table
 // cast a page we get from the page allocator to a root page
 pub fn createRoot() pool.MemoryPoolError!PageTablePtr {
-    var root: PageTablePtr = @ptrCast(try page_allocator.create());
+    const root: PageTablePtr = @ptrCast(try page_allocator.create());
     // fill up the root with empty pte
     // values don't matter so long as valid is false
     @memset(root, PTEntry{
@@ -251,7 +251,7 @@ pub fn createPage(root: PageTablePtr, virt_addr: u32, r: bool, w: bool, x: bool,
     if (pte) |p| {
         if (!p.valid) {
             // create and zero out new user page
-            var user_page = try page_allocator.create();
+            const user_page = try page_allocator.create();
             @memset(user_page, 0);
 
             // write new user-mode leaf to page table that is read/write/executable
@@ -282,7 +282,7 @@ pub fn createPage(root: PageTablePtr, virt_addr: u32, r: bool, w: bool, x: bool,
 // programs
 pub fn setMapping(root: PageTablePtr, va: u32, page_no: u34, r: bool, w: bool, x: bool, u: bool) pool.MemoryPoolError!void {
     // get pte for that va
-    var pte = try getPTE(root, @bitCast(va), true);
+    const pte = try getPTE(root, @bitCast(va), true);
 
     if (pte) |p| {
         if (p.valid) {
