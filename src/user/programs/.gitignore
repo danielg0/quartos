@@ -1,3 +1,4 @@
 # C binaries & object files
 hello
+fibonacci
 *.o

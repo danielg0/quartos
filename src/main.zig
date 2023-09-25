@@ -94,11 +94,26 @@ fn main() !void {
         .page_table = hello_pt,
         .pc = hello_entry,
     };
+    _ = hello;
+
+    // a fibonacci C program
+    const fib_binary = @embedFile("user/programs/fibonacci");
+    const fib_pt = try paging.createRoot();
+    const fib_entry = try elf.load(fib_pt, fib_binary);
+    const fib_uart = 0x5000;
+    try paging.setMapping(fib_pt, fib_uart, uart_pa, true, true, false, true);
+    var fib: process.Process = .{
+        .id = 3,
+        .name = process.name("fib"),
+        .state = .READY,
+        .page_table = fib_pt,
+        .pc = fib_entry,
+    };
 
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
 
-    paging.enable(hello.page_table);
+    paging.enable(fib.page_table);
 
     // attempt to go into user mode
     _ = asm volatile (
@@ -136,8 +151,8 @@ fn main() !void {
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (hello.pc),
-          [running] "{x31}" (&hello),
+        : [pc] "r" (fib.pc),
+          [running] "{x31}" (&fib),
           [off_saved] "i" (@offsetOf(process.Process, "saved")),
         : "t0"
     );
