@@ -13,8 +13,8 @@ var mtime: *u64 = @ptrFromInt(0x200BFF8);
 var mtimecmp: *u64 = @ptrFromInt(0x2004000);
 
 // get an mtime corresponding to a number of seconds in the future
-pub fn offset(seconds: u32) u64 {
-    const cycles = seconds * clock_hz;
+pub fn offset(seconds: f32) u64 {
+    const cycles: u64 = @intFromFloat(seconds * clock_hz);
     return mtime.* + cycles;
 }
 
