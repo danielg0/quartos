@@ -43,9 +43,9 @@ pub fn set(wake_time: u64) void {
 
 // timer interrupt handler
 fn handler(running: *process.Process) callconv(.C) void {
-    _ = running;
-
     try uart.out.writeAll("Got a timer interrupt!\r\n");
+    // make the running process swap out for another
+    running.state = .READY;
 
     // TODO: implement a task queue
     set(offset(1));

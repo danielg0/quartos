@@ -1,6 +1,9 @@
+const std = @import("std");
+const assert = std.debug.assert;
+
 const paging = @import("paging.zig");
 const process = @import("process.zig");
-const std = @import("std");
+const schedule = @import("schedule.zig");
 const uart = @import("uart.zig");
 
 // linker symbol for beginning of kernel stack
@@ -48,6 +51,13 @@ pub const Trap = enum(u5) {
 
 // array of function pointers to trap handlers
 // index for a given interrupt/exception's handler is its value in the Trap enum
+//
+// trap handlers can modify the current running process by modifying the
+// running struct, and can choose what happens when they return by setting its
+// state to:
+//   .RUNNING => the running process keeps running
+//   .BLOCKED => the running process is blocked and another is scheduled
+//   .READY   => the running process is switched out for another
 const TrapHandler = *const fn (running: *process.Process) callconv(.C) void;
 var handlers: [32]?TrapHandler = [_]?TrapHandler{null} ** 32;
 
@@ -267,6 +277,8 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
 // called into on every trap
 // logs the trap and causer, then calls into its handler
 fn trap_handler(running: *process.Process) callconv(.C) void {
+    assert(running.state == .RUNNING);
+
     // get what sort of trap occured
     // msb is whether it's interrupt or trap, lowest 4 bits are the code
     const mcause = asm volatile (
@@ -289,15 +301,22 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
     try uart.out.writeAll("mscratch holds ");
     try process.print(running, uart.out);
 
-    // call into handler, getting next process to run
+    // call into handler
+    // it may modify the process struct to change its registers, cause it to
+    // become blocked/unscheduled or add new mappings to its pagetable
     const handler = handlers[@intFromEnum(trap)] orelse @panic("No handler for trap!");
     handler(running);
 
-    // reload the page table for whatever process runs next
-    const next = asm ("csrr %[next], mscratch"
-        : [next] "=r" (-> *process.Process),
-    );
+    // find what process is running next
+    const next = schedule.next(running);
+
+    // reload the page table for the next process, also fence so changes apply
     paging.enable(next.page_table);
+    // load the next process into mscratch
+    _ = asm volatile ("csrw mscratch, %[next]"
+        :
+        : [next] "r" (next),
+    );
 }
 
 // zig trap panic handler

@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = std.builtin;
 
-const elf = @import("kernel/elf.zig");
 const fdtb = @import("boot/fdtb.zig");
 const paging = @import("kernel/paging.zig");
 const process = @import("kernel/process.zig");
+const schedule = @import("kernel/schedule.zig");
 const timer = @import("kernel/timer.zig");
 const trap = @import("kernel/trap.zig");
 const uart = @import("kernel/uart.zig");
@@ -47,68 +47,33 @@ fn main() !void {
 
     try uart.out.writeAll("Welcome to QuartOS\r\n");
 
-    // initialise ready process and page lists
+    // initialise paging and ready process lists
+    try paging.init();
+    try schedule.init();
+
+    // setup kernel device drivers
     timer.init();
     // TODO: this defer does nothing because we leave this function via assembly
     defer timer.deinit();
 
-    try paging.init();
-
     // start required processes
 
-    // page address of uart (we map this a couple times)
+    // page address and mapping for uart (we map this a couple times)
     const uart_pa = 0x10000000;
-
-    // set up a dummy idle process
-    // create root page
-    const idle_pt = try paging.createRoot();
-    // create page for code
-    const idle_code_va = 0x80000000;
-    const idle_code_pa = try paging.createPage(idle_pt, idle_code_va, false, false, true, true);
-    // copy code into idle's memory
-    @memcpy(@as([*]u8, @ptrFromInt(@as(usize, @truncate(idle_code_pa))))[0..1024], @as([*]const u8, @ptrCast(&idle_bin)));
-    // create mapping for uart
-    const idle_uart = 0x80001000;
-    try paging.setMapping(idle_pt, idle_uart, uart_pa, true, true, false, true);
-    var idle: process.Process = .{
-        .id = 1,
-        .name = process.name("idle"),
-        .state = .READY,
-        .page_table = idle_pt,
-        .pc = idle_code_va,
-    };
-    _ = idle;
+    const uart_va = 0x5000;
+    const user_uart = [_]schedule.Mapping{.{ .virt = uart_va, .phys = uart_pa, .r = true, .w = true }};
 
     // a hello world C program
-    const hello_binary = @embedFile("user/programs/hello");
-    const hello_pt = try paging.createRoot();
-    // load code into memory
-    const hello_entry = try elf.load(hello_pt, hello_binary);
-    // setup uart
-    const hello_uart = 0x5000;
-    try paging.setMapping(hello_pt, hello_uart, uart_pa, true, true, false, true);
-    var hello: process.Process = .{
-        .id = 2,
-        .name = process.name("hello"),
-        .state = .READY,
-        .page_table = hello_pt,
-        .pc = hello_entry,
-    };
+    const hello = try schedule.createMapped("hello", @embedFile("user/programs/hello"), &user_uart);
     _ = hello;
 
     // a fibonacci C program
-    const fib_binary = @embedFile("user/programs/fibonacci");
-    const fib_pt = try paging.createRoot();
-    const fib_entry = try elf.load(fib_pt, fib_binary);
-    const fib_uart = 0x5000;
-    try paging.setMapping(fib_pt, fib_uart, uart_pa, true, true, false, true);
-    var fib: process.Process = .{
-        .id = 3,
-        .name = process.name("fib"),
-        .state = .READY,
-        .page_table = fib_pt,
-        .pc = fib_entry,
-    };
+    const fib = try schedule.createMapped("fib", @embedFile("user/programs/fibonacci"), &user_uart);
+
+    // TODO REMOVE THIS
+    // pull fib out of ready list as our first process to run
+    fib.elem.remove();
+    fib.state = .RUNNING;
 
     // set a time for the end of the first slice
     timer.set(timer.offset(1));
@@ -152,38 +117,13 @@ fn main() !void {
         \\ mret
         :
         : [pc] "r" (fib.pc),
-          [running] "{x31}" (&fib),
+          [running] "{x31}" (fib),
           [off_saved] "i" (@offsetOf(process.Process, "saved")),
         : "t0"
     );
 
     // we should never get back here, any traps in future should goto trap stub
     unreachable;
-}
-
-// simple idle function
-// handwritten so I can specify addresses
-fn idle_bin() callconv(.Naked) noreturn {
-    _ = asm volatile (
-        \\ li a5, 0x80001000
-        \\ nop
-        // write "hello"
-        \\ li a4, 104
-        \\ sb a4, 0(a5)
-        \\ li a4, 101
-        \\ sb a4, 0(a5)
-        \\ li a4, 108
-        \\ sb a4, 0(a5)
-        \\ sb a4, 0(a5)
-        \\ li a4, 111
-        \\ sb a4, 0(a5)
-        \\ li a4, 13
-        \\ sb a4, 0(a5)
-        \\ li a4, 10
-        \\ sb a4, 0(a5)
-        // loop forever
-        \\ jal 0
-    );
 }
 
 pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?usize) noreturn {

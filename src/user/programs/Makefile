@@ -6,9 +6,10 @@ CFLAGS  += $(TARGET) -O2
 LDFLAGS += $(TARGET) -nolibc -nostdlib
 
 .PHONY: all clean
-all: hello fibonacci
+all: hello fibonacci idle
 clean:
-	rm -f hello fibonacci *.o
+	rm -f hello fibonacci idle *.o
 
 hello: hello.o
 fibonacci: fibonacci.o
+idle: idle.s

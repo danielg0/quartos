@@ -1,4 +1,5 @@
 # C binaries & object files
 hello
 fibonacci
+idle
 *.o
