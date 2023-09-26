@@ -255,22 +255,17 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
     // kernel space, or is missing the magic value, so call trap_panic
     // we reset back to the kernel stack before jumping to avoid any other traps
     // due to bad memory accesses
-
-    // because we may have come from a couple different points previously, tell
-    // llvm that all registers are trashed
     const stack_end: [*]u8 = @ptrCast(&_stack_end);
     _ = asm volatile (
         \\ invalid_running:
-        ::: "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31");
-
-    _ = asm volatile (
+        \\ la sp, %[kernel_stack]
         \\ csrr a0, mepc
         \\ csrr a1, mscratch
-        \\ jr %[trap_panic]
+        \\ j %[trap_panic]
         :
-        : [trap_panic] "r" (&trap_panic),
-          [stack] "{sp}" (stack_end),
-        : "a0", "a1"
+        : [trap_panic] "i" (&trap_panic),
+          [kernel_stack] "i" (stack_end),
+        : "a0", "a1", "t1", "sp"
     );
 }
 
