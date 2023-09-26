@@ -110,12 +110,12 @@ comptime {
     }
 }
 
-// convert a comptime u8 slice (ie. a string literal), to a process name
-pub fn name(comptime literal: []const u8) Name {
-    if (literal.len > NAME_LEN)
-        @compileError("Process name too long");
+// convert a u8 slice (eg. a string literal) to a process name
+// truncates literals that are too long
+pub fn name(literal: []const u8) Name {
     var arr: Name = [_]u8{0} ** NAME_LEN;
-    for (literal, 0..) |c, i| {
+    const len = @min(literal.len, NAME_LEN);
+    for (literal[0..len], 0..) |c, i| {
         arr[i] = c;
     }
     return arr;
