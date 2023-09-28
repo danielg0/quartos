@@ -17,7 +17,7 @@ const StructList = @import("struct_list.zig").StructList;
 // memory-pool allocators for allocating process structs
 // we allocate them from a fixed buffer in kernel space, which puts a maximum
 // limit on the number of processes that can exist at once
-const MAX_PROC = 4096; // 4096 processes taking up a page each is 16MiB
+const MAX_PROC = 4096;
 // proc_buf is public so we can check process pointers point inside it
 var procs = [_]u8{0} ** (@sizeOf(process.Process) * MAX_PROC);
 // TODO: replace with standard library memory pool

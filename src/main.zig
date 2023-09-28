@@ -31,32 +31,32 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
         }
     }
 
-    main() catch |e| {
+    kinit() catch |e| {
         uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
         park();
     };
 
-    uart.out.writeAll("KERNEL SHUTDOWN\r\n") catch unreachable;
+    uart.out.writeAll("RETURNED FROM KERNEL INIT!\r\n") catch unreachable;
     park();
 }
 
-// kernel main function
+// kernel main initialisation function
 // initialises kernel data structures and kickstarts core services
-fn main() !void {
+// once we go into the first process, we never return to kinit, so we can use
+// the kernel stack for trap handling
+fn kinit() !noreturn {
     // initialise trap handling - should be first thing we do so we get errors
     // if something fails during initialisation
     trap.init();
 
     try uart.out.writeAll("Welcome to QuartOS\r\n");
 
-    // initialise paging and ready process lists
+    // initialise paging and process scheduling
     try paging.init();
     try schedule.init();
 
     // setup kernel device drivers
     timer.init();
-    // TODO: this defer does nothing because we leave this function via assembly
-    defer timer.deinit();
 
     // start required processes
 
@@ -66,21 +66,22 @@ fn main() !void {
     const user_uart = [_]schedule.Mapping{.{ .virt = uart_va, .phys = uart_pa, .r = true, .w = true }};
 
     // a hello world C program
-    const hello = try schedule.createMapped("hello", @embedFile("user/programs/hello"), &user_uart);
-    _ = hello;
-
+    _ = try schedule.createMapped("hello", @embedFile("user/programs/hello"), &user_uart);
     // a fibonacci C program
     const fib = try schedule.createMapped("fib", @embedFile("user/programs/fibonacci"), &user_uart);
 
-    // TODO REMOVE THIS
-    // pull fib out of ready list as our first process to run
-    fib.elem.remove();
-    fib.state = .RUNNING;
+    // initial process
+    // we pull it out manually because scheduling assumes we have a running
+    // process that isn't in any ready lists
+    const init = fib;
+    init.elem.remove();
+    init.state = .RUNNING;
 
-    // set a time for the end of the first slice
+    // set a timer for the end of the first slice
     timer.set(timer.offset(1));
 
-    paging.enable(fib.page_table);
+    // enable paging for the initial process
+    paging.enable(init.page_table);
 
     // attempt to go into user mode
     _ = asm volatile (
@@ -99,7 +100,7 @@ fn main() !void {
         // save pointer to process to mscratch
         \\ csrw mscratch, %[running]
 
-        // set which privilege mode to go to
+        // specify that we return to user mode
         \\ li t0, 0x1800
         \\ csrc mstatus, t0
 
@@ -118,8 +119,8 @@ fn main() !void {
         // "return from a trap" (ie. jump to mepc as a user)
         \\ mret
         :
-        : [pc] "r" (fib.pc),
-          [running] "{x31}" (fib),
+        : [pc] "r" (init.pc),
+          [running] "{x31}" (init),
           [off_saved] "i" (@offsetOf(process.Process, "saved")),
         : "t0"
     );

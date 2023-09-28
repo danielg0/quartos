@@ -77,38 +77,7 @@ pub const Process = struct {
     // magic value we can check for when given a process pointer to check that
     // it's valid (probably)
     magic: u32 = MAGIC,
-
-    // the rest of the process struct is used for the interrupt handler stack
-    // TODO: once message passing implemented, come back and consider one
-    // kernel-wide trap stack. If we only ever handle one trap at a time, surely
-    // we only need one trap stack?
-    stack: [STACK_SIZE]u8 = [_]u8{0} ** STACK_SIZE,
-    pub const STACK_SIZE = 3912;
 };
-
-// we want to keep the size of the process struct equal to a page of memory
-comptime {
-    if (@sizeOf(Process) != std.mem.page_size) {
-        @compileLog("sizeOf(Process):", @sizeOf(Process));
-        @compileLog("sizeOf(Page): ", std.mem.page_size);
-        @compileError("Process struct is not the same size as a page");
-    }
-
-    // also do a double check that the process stack is at the end of the
-    // struct. zig doesn't have to keep it this way, but I can't think of a nice
-    // way to make it
-    if (@offsetOf(Process, "stack") + Process.STACK_SIZE + 1 != std.mem.page_size) {
-        @compileLog(@offsetOf(Process, "stack"));
-        @compileLog(Process.STACK_SIZE);
-        @compileLog(std.mem.page_size);
-        @compileLog("The offsets of every member are:");
-        inline for (@typeInfo(Process).Struct.fields) |field| {
-            @compileLog(field.name, @offsetOf(Process, field.name));
-        }
-
-        @compileError("Process stack isn't at the end of the struct");
-    }
-}
 
 // convert a u8 slice (eg. a string literal) to a process name
 // truncates literals that are too long

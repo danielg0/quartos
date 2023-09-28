@@ -6,11 +6,6 @@ const process = @import("process.zig");
 const schedule = @import("schedule.zig");
 const uart = @import("uart.zig");
 
-// linker symbol for beginning of kernel stack
-// take the address of it, to get the value
-// defined in boot/virt.ld
-extern const _stack_end: *anyopaque;
-
 // in RISCV, traps have two types of causes, interrupts and exceptions. We want
 // to be able to register handlers for both types (eg. a software interrupt is
 // an interrupt, and a page fault is an exception)
@@ -147,15 +142,10 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         \\ addi x31, x31, -8
         \\ sltiu x31, x31, 4
         \\ beqz x31, invalid_running
-        // add the length of the struct (a page) to the base pointer and make
-        // sure that is in range as well
+        // add the length of the struct to the base pointer and make sure that
+        // is in range as well
         \\ csrr x31, mscratch
-        // addi x31, x31, %[off_stack] (ie. 4096)
-        // we have to do it in 3 lines because addi is limited to [-2048, 2047]
-        // 2047 + 2047 + 2 = 4096
-        \\ addi x31, x31, 2047
-        \\ addi x31, x31, 2047
-        \\ addi x31, x31, 2
+        \\ addi x31, x31, %[sizeof_process]
         // check in range 0x8000 0000 to 0xbfff ffff inclusive
         \\ srli x31, x31, 28
         \\ addi x31, x31, -8
@@ -196,22 +186,20 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
         \\ csrr x30, mtval
         \\ sw x30, %[off_fault_cause](x31)
 
-        // switch to the per-process kernel stack
+        // switch to the per-hart trap stack
         // this is so that the process can't screw with us by maliciously
         // setting sp to point to some random part of memory before making a
         // system call
-        // remember, stack starts from the end/high-end of a process and grows
-        // back/lower
-        \\ li x30, %[off_stack]
-        \\ add sp, x30, x31
+        // remember, stack starts from the end/high-end and grows back/lower
+        \\ la sp, _stack_end
         \\ mv fp, sp
         : [process] "={x31}" (-> *process.Process),
-        : [off_saved] "i" (@offsetOf(process.Process, "saved")),
-          [off_stack] "i" (@sizeOf(process.Process)),
+        : [sizeof_process] "i" (@sizeOf(process.Process)),
+          [off_saved] "i" (@offsetOf(process.Process, "saved")),
           [off_magic] "i" (@offsetOf(process.Process, "magic")),
+          [magic] "i" (process.MAGIC),
           [off_pc] "i" (@offsetOf(process.Process, "pc")),
           [off_fault_cause] "i" (@offsetOf(process.Process, "fault_cause")),
-          [magic] "i" (process.MAGIC),
     );
 
     // jump into zig handler
@@ -228,7 +216,7 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
     );
 
     // restore registers and go back to user mode
-    // if any scheduling occured, it has updated the pointer in mscratch, so
+    // if any rescheduling occured, it has updated the pointer in mscratch, so
     // we should restore from that rather than use running
     _ = asm volatile (
         \\ csrr x31, mscratch
@@ -255,19 +243,17 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
 
     // we trapped but the process pointer stored in mscratch is either not in
     // kernel space, or is missing the magic value, so call trap_panic
-    // we reset back to the kernel stack before jumping to avoid any other traps
+    // we reset back to the hart stack before jumping to avoid any other traps
     // due to bad memory accesses
-    const stack_end: [*]u8 = @ptrCast(&_stack_end);
     _ = asm volatile (
         \\ invalid_running:
-        \\ la sp, %[kernel_stack]
+        \\ la sp, _stack_end
         \\ csrr a0, mepc
         \\ csrr a1, mscratch
         \\ j %[trap_panic]
         :
         : [trap_panic] "i" (&trap_panic),
-          [kernel_stack] "i" (stack_end),
-        : "a0", "a1", "t1", "sp"
+        : "a0", "a1", "sp"
     );
 }
 
