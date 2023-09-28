@@ -136,6 +136,8 @@ fn trap_stub() align(4) callconv(.Naked) noreturn {
 
         // make sure pointer is in kernel space
         // (ie. between 0x8000 0000 and 0xbfff ffff inclusive)
+        // TODO: update this value (ie. constrain it to the heap we use for
+        // allocating user processes - see paging.zig)
         // if not, go to kernel_panic, which logs some info and halts
 
         // as pointers are 32 bits, we're shifting out all but the last nibble

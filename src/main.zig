@@ -17,6 +17,8 @@ extern fn park() noreturn;
 // zig entry point called from boot/start.s
 // first argument is a pointer to the flattened device tree blob
 export fn entry(fdtb_blob: ?[*]const u8) noreturn {
+    // TODO: replace device tree blob printer with service that runs driver
+    // processes for found devices
     if (enabled_fdtb) {
         if (fdtb_blob) |blob| {
             fdtb.print(blob, uart.out) catch |e| {
