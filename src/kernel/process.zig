@@ -49,6 +49,7 @@ pub const Process = struct {
         RUNNING,
         READY,
         BLOCKED,
+        DYING,
     };
 
     // unique, kernel-wide identifier for this process

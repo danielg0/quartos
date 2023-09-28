@@ -13,12 +13,12 @@ void main(void) {
 }
 
 // define our own hardcoded _start
+// once done, we jump to null to page fault and die
 asm ("\
 		.section .text\n\
 		.global _start\n\
 		.type   _start,@function\n\
 		_start:\n\
 			call main\n\
-		_start_park:\n\
-			j _start_park"
+			j 0"
     );

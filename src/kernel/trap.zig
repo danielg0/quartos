@@ -53,6 +53,7 @@ pub const Trap = enum(u5) {
 //   .RUNNING => the running process keeps running
 //   .BLOCKED => the running process is blocked and another is scheduled
 //   .READY   => the running process is switched out for another
+//   .DYING   => the running process is killed
 const TrapHandler = *const fn (running: *process.Process) callconv(.C) void;
 var handlers: [32]?TrapHandler = [_]?TrapHandler{null} ** 32;
 

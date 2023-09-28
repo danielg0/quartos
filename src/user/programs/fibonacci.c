@@ -43,6 +43,5 @@ asm ("\
 		.type   _start,@function\n\
 		_start:\n\
 			call main\n\
-		_start_park:\n\
-			j _start_park"
+			j 0"
     );

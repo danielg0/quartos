@@ -83,7 +83,7 @@ pub fn createMapped(name: []const u8, binary: []const u8, mappings: []const Mapp
 
     // try to allocate a root page table for it
     const pt = try paging.createRoot();
-    // TODO: errdefer paging.destroy(pt);
+    errdefer paging.destroy(pt);
 
     // load code into memory
     const entry = try elf.load(pt, binary);
@@ -112,10 +112,22 @@ pub fn createMapped(name: []const u8, binary: []const u8, mappings: []const Mapp
 }
 
 // delete a process, freeing its memory
-// TODO: free memory
-pub fn delete(proc: *process.Process) void {
+pub fn destroy(proc: *process.Process) void {
+    assert(fba.ownsPtr(@ptrCast(proc)));
+    assert(proc.magic == process.MAGIC);
+
+    // remove from ready lists
+    // if state is running or dying (which is only set by a running process that
+    // dies after trapping)
+    if (proc.state != .RUNNING and proc.state != .DYING)
+        proc.elem.remove();
     proc.allelem.remove();
-    proc.elem.remove();
+
+    // free page table and user pages
+    paging.destroy(proc.page_table);
+
+    // free process struct memory
+    proc_allocator.destroy(@alignCast(proc));
 }
 
 // get the next process to run
@@ -123,16 +135,19 @@ pub fn delete(proc: *process.Process) void {
 // server processes over user processes
 pub fn next(curr: *process.Process) *process.Process {
     assert(fba.ownsPtr(@ptrCast(curr)));
+    assert(curr.magic == process.MAGIC);
 
     if (curr != idle) {
         // what we do with the process depends on it's state
         // .RUNNING - it keeps going
         // .READY   - it gets put to the back of the ready queue
         // .BLOCKED - it gets put in the blocked list
+        // .DYING   - free its memory and schedule something else
         switch (curr.state) {
             .RUNNING => return curr,
             .READY => user.pushBack(&curr.elem),
             .BLOCKED => blocked.pushBack(&curr.elem),
+            .DYING => destroy(curr),
         }
     } else {
         // special case for idle, we always want to switch it out if we can
@@ -148,6 +163,7 @@ pub fn next(curr: *process.Process) *process.Process {
         user.popFront() orelse
         &idle.elem;
     const next_proc = next_elem.data(process.Process, "elem");
+    assert(next_proc.magic == process.MAGIC);
 
     // set relevent flags
     assert(next_proc.state == .READY);
@@ -174,6 +190,7 @@ pub fn unblockID(id: u32) !void {
 // unblock a process
 pub fn unblock(proc: *process.Process) void {
     assert(fba.ownsPtr(proc));
+    assert(proc.magic == process.MAGIC);
     assert(proc.state == .BLOCKED);
 
     // take off blocked list, put on ready list

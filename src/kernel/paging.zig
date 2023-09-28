@@ -222,6 +222,31 @@ pub fn createRoot() pool.MemoryPoolError!PageTablePtr {
     });
     return root;
 }
+// delete a root page table and free all it's memory
+// free all sub page tables and attached user pages if allocated by us
+// TODO: what about shared pages? we don't want to free them if another process
+// is still using it (perhaps we could use rsw as a reference count?)
+pub fn destroy(root: PageTablePtr) void {
+    assert(fba.ownsPtr(@ptrCast(root)));
+
+    for (root) |pte| {
+        if (pte.valid) {
+            // get physical page this pte points at
+            const page = ptrFromPhys(.{ .page_no = pte.page_no, .offset = 0 });
+
+            if (!pte.readable and !pte.writeable and !pte.executable) {
+                // pte is a pointer to another level of ptes
+                destroy(@ptrCast(page));
+            } else if (fba.ownsPtr(page)) {
+                // pte is a pointer to a userpage we allocated
+                page_allocator.destroy(page);
+            }
+        }
+    }
+
+    // free this root page
+    page_allocator.destroy(@ptrCast(root));
+}
 
 // get the physical address for a given process' virtual address, if it exists
 pub fn physFromVirt(root: PageTablePtr, va: u32) ?u34 {
@@ -325,13 +350,16 @@ fn fault_handler(running: *process.Process) callconv(.C) void {
                 true,
                 false,
                 true,
-            ) catch
-                @panic("Couldn't create page to avoid page fault");
+            ) catch {
+                uart.out.writeAll("Couldn't create page to avoid page fault\r\n") catch @panic("UART error");
+                // kill process
+                running.state = .DYING;
+            };
             return;
         }
     }
 
     // if we haven't returned at this point kill the process
-    // TODO: process killing
-    @panic("Process made a page fault and should be killed");
+    running.state = .DYING;
+    uart.out.writeAll("Process made a page fault and is being killed\r\n") catch @panic("UART error");
 }
