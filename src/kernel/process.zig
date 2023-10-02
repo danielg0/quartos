@@ -2,6 +2,8 @@ const std = @import("std");
 const StructList = @import("struct_list.zig").StructList;
 const paging = @import("paging.zig");
 
+const log = std.log.scoped(.process);
+
 const NAME_LEN = 16;
 const Name = [NAME_LEN]u8;
 
@@ -45,6 +47,8 @@ pub const Registers = extern struct {
 };
 
 pub const Process = struct {
+    const Self = @This();
+
     pub const State = enum {
         RUNNING,
         READY,
@@ -78,6 +82,18 @@ pub const Process = struct {
     // magic value we can check for when given a process pointer to check that
     // it's valid (probably)
     magic: u32 = MAGIC,
+
+    // log function for a process
+    // we have to write our own because the definition of Process contains
+    // structlist elems, which are recursive
+    pub fn print(self: *Self) void {
+        log.debug("Process #{d}", .{self.id});
+        log.debug("  name: '{s}'", .{self.name});
+        log.debug("  state: {}", .{self.state});
+        log.debug("  program counter: 0x{x}", .{self.pc});
+        log.debug("  fault cause: 0x{x}", .{self.fault_cause});
+        log.debug("  saved: {any}", .{self.saved});
+    }
 };
 
 // convert a u8 slice (eg. a string literal) to a process name
@@ -89,14 +105,4 @@ pub fn name(literal: []const u8) Name {
         arr[i] = c;
     }
     return arr;
-}
-
-// print out a process
-// we have to write our own because the definition of Process contains
-// structlist elems, which are recursive
-pub fn print(process: *const Process, writer: anytype) !void {
-    try writer.print(
-        "Process #{d}\r\n  name: '{s}'\r\n  state: {}\r\n  program counter: 0x{x}\r\n  fault cause: 0x{x}\r\n  saved: {any}\r\n",
-        .{ process.id, process.name, process.state, process.pc, process.fault_cause, process.saved },
-    );
 }

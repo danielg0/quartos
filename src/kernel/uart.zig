@@ -1,4 +1,6 @@
-const io = @import("std").io;
+// uart logger for kernel warning messages, etc.
+const std = @import("std");
+const io = std.io;
 
 // register definitions
 // https://www.lammertbies.nl/comm/info/serial-uart
@@ -42,7 +44,12 @@ fn read(ctx: void, buff: []u8) !usize {
 }
 
 // define public reader/writer for uart
-pub const out: io.Writer(void, error{}, write) = .{ .context = {} };
-pub const in: io.Reader(void, error{}, read) = .{ .context = {} };
+const out: io.Writer(void, error{}, write) = .{ .context = {} };
+const in: io.Reader(void, error{}, read) = .{ .context = {} };
 
-// TODO: helper functions like getLine, etc. that echo what's typed?
+// a zig custom logger that wraps uart
+pub fn log(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
+    // get scope & level as a prefix string
+    const prefix = "[" ++ comptime level.asText() ++ "] (" ++ @tagName(scope) ++ "): ";
+    out.print(prefix ++ format ++ "\r\n", args) catch return;
+}

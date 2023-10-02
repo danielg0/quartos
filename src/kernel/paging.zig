@@ -4,7 +4,8 @@ const assert = std.debug.assert;
 const pool = @import("memory_pool.zig");
 const process = @import("process.zig");
 const trap = @import("trap.zig");
-const uart = @import("uart.zig");
+
+const log = std.log.scoped(.paging);
 
 // Implement an interface to the Sv32 Virtual-Memory System
 // Defined in riscv-privileged section 4.3
@@ -351,7 +352,7 @@ fn fault_handler(running: *process.Process) callconv(.C) void {
                 false,
                 true,
             ) catch {
-                uart.out.writeAll("Couldn't create page to avoid page fault\r\n") catch @panic("UART error");
+                log.warn("Couldn't create page to avoid page fault", .{});
                 // kill process
                 running.state = .DYING;
             };
@@ -361,5 +362,5 @@ fn fault_handler(running: *process.Process) callconv(.C) void {
 
     // if we haven't returned at this point kill the process
     running.state = .DYING;
-    uart.out.writeAll("Process made a page fault and is being killed\r\n") catch @panic("UART error");
+    log.warn("Process made a page fault and is being killed", .{});
 }

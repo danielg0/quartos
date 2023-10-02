@@ -22,23 +22,29 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
     if (enabled_fdtb) {
         if (fdtb_blob) |blob| {
             fdtb.print(blob, uart.out) catch |e| {
-                uart.out.print("FDTB PARSE ERROR!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
+                std.log.err("FDTB parse error! {s}", .{@errorName(e)});
                 park();
             };
         } else {
-            uart.out.writeAll("FDTB POINTER NULL!\r\n") catch unreachable;
+            std.log.err("FDTB pointer null!", .{});
             park();
         }
     }
 
     kinit() catch |e| {
-        uart.out.print("KERNEL PANIC!\r\n{s}\r\n", .{@errorName(e)}) catch unreachable;
+        std.log.err("Kernel panic! {s}", .{@errorName(e)});
         park();
     };
 
-    uart.out.writeAll("RETURNED FROM KERNEL INIT!\r\n") catch unreachable;
+    std.log.err("Returned from kernel init!", .{});
     park();
 }
+
+// override standard library logging function with the uart one
+pub const std_options = struct {
+    pub const logFn = uart.log;
+    pub const log_level = .info;
+};
 
 // kernel main initialisation function
 // initialises kernel data structures and kickstarts core services
@@ -49,7 +55,7 @@ fn kinit() !noreturn {
     // if something fails during initialisation
     trap.init();
 
-    try uart.out.writeAll("Welcome to QuartOS\r\n");
+    std.log.info("Welcome to QuartOS", .{});
 
     // initialise paging and process scheduling
     try paging.init();
@@ -133,6 +139,6 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?us
     _ = error_return_trace;
     _ = siz;
 
-    uart.out.print("PANIC!\r\n{s}\r\n", .{msg}) catch unreachable;
+    std.log.err("Zig panic! {s}", .{msg});
     park();
 }

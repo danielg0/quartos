@@ -4,7 +4,8 @@ const assert = std.debug.assert;
 const paging = @import("paging.zig");
 const process = @import("process.zig");
 const schedule = @import("schedule.zig");
-const uart = @import("uart.zig");
+
+const log = std.log.scoped(.trap);
 
 // in RISCV, traps have two types of causes, interrupts and exceptions. We want
 // to be able to register handlers for both types (eg. a software interrupt is
@@ -281,9 +282,9 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
     );
 
     // log trap and process that caused it
-    try uart.out.print("Recived {} at level {d}:\r\n", .{ trap, level });
-    try uart.out.writeAll("mscratch holds ");
-    try process.print(running, uart.out);
+    log.info("Recived {} at level {d}", .{ trap, level });
+    log.info("mscratch holds Process #{d}", .{running.id});
+    running.print();
 
     // call into handler
     // it may modify the process struct to change its registers, cause it to
@@ -301,13 +302,12 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
         :
         : [next] "r" (next),
     );
+
+    log.info("Finished handling trap", .{});
 }
 
 // zig trap panic handler
 fn trap_panic(pc: u32, running: u32) callconv(.C) noreturn {
-    uart.out.print(
-        "\r\nGot a fault at: 0x{x}\r\nmscratch had invalid value: 0x{x}\r\n",
-        .{ pc, running },
-    ) catch unreachable;
+    log.err("Got a fault at: 0x{x} - mscratch had invalid value: 0x{x}", .{ pc, running });
     @panic("Trap Panic!");
 }

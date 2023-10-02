@@ -1,6 +1,7 @@
-const uart = @import("uart.zig");
 const trap = @import("trap.zig");
 const process = @import("process.zig");
+
+const log = @import("std").log.scoped(.timer);
 
 // on virt, mtime clock runs at 10Mhz
 // https://stackoverflow.com/a/63242624
@@ -43,7 +44,7 @@ pub fn set(wake_time: u64) void {
 
 // timer interrupt handler
 fn handler(running: *process.Process) callconv(.C) void {
-    try uart.out.writeAll("Got a timer interrupt!\r\n");
+    log.debug("Recieved timer interrupt", .{});
     // make the running process swap out for another
     running.state = .READY;
 
@@ -54,7 +55,7 @@ fn handler(running: *process.Process) callconv(.C) void {
 // setup timer driver
 pub fn init() void {
     trap.register(.MModeTimer, &handler) catch {
-        try uart.out.writeAll("Couldn't register timer interrupt\r\n");
+        log.err("Couldn't register timer interrupt", .{});
     };
 }
 
