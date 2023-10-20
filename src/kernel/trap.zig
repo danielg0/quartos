@@ -55,12 +55,13 @@ pub const Trap = enum(u5) {
 //   .BLOCKED => the running process is blocked and another is scheduled
 //   .READY   => the running process is switched out for another
 //   .DYING   => the running process is killed
-const TrapHandler = *const fn (running: *process.Process) callconv(.C) void;
-var handlers: [32]?TrapHandler = [_]?TrapHandler{null} ** 32;
+pub const Handler = *const fn (running: *process.Process) callconv(.C) void;
+const HANDLER_NUM = 1 + std.math.maxInt(@typeInfo(Trap).Enum.tag_type);
+var handlers: [HANDLER_NUM]?Handler = [_]?Handler{null} ** HANDLER_NUM;
 
 // functions for registering/unregistering handlers
 // should always be functions in kernel space (ie. message send primitives)
-pub fn register(trap: Trap, handler: TrapHandler) !void {
+pub fn register(trap: Trap, handler: Handler) !void {
     // check we don't already have a handler for that trap
     if (handlers[@intFromEnum(trap)] != null)
         return error.TrapAlreadyRegistered;
