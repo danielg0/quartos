@@ -283,7 +283,7 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
 
     // log trap and process that caused it
     log.info("Recived {} at level {d}", .{ trap, level });
-    log.info("mscratch holds Process #{d}", .{running.id});
+    log.info("mscratch holds Process #{d} \"{s}\"", .{ running.id, running.name });
     running.print();
 
     // call into handler

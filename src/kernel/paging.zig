@@ -356,6 +356,7 @@ fn fault_handler(running: *process.Process) callconv(.C) void {
                 // kill process
                 running.state = .DYING;
             };
+            log.info("Grew process stack to avoid page fault", .{});
             return;
         }
     }
