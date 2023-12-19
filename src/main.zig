@@ -5,14 +5,12 @@ const fdtb = @import("boot/fdtb.zig");
 const paging = @import("kernel/paging.zig");
 const process = @import("kernel/process.zig");
 const schedule = @import("kernel/schedule.zig");
+const syscon = @import("kernel/syscon.zig");
 const timer = @import("kernel/timer.zig");
 const trap = @import("kernel/trap.zig");
 const uart = @import("kernel/uart.zig");
 
 const enabled_fdtb = false;
-
-// while true loop defined in boot/start.s
-extern fn park() noreturn;
 
 // zig entry point called from boot/start.s
 // first argument is a pointer to the flattened device tree blob
@@ -23,21 +21,18 @@ export fn entry(fdtb_blob: ?[*]const u8) noreturn {
         if (fdtb_blob) |blob| {
             fdtb.print(blob, uart.out) catch |e| {
                 std.log.err("FDTB parse error! {s}", .{@errorName(e)});
-                park();
+                syscon.poweroff();
             };
         } else {
             std.log.err("FDTB pointer null!", .{});
-            park();
+            syscon.poweroff();
         }
     }
 
     kinit() catch |e| {
         std.log.err("Kernel panic! {s}", .{@errorName(e)});
-        park();
+        syscon.poweroff();
     };
-
-    std.log.err("Returned from kernel init!", .{});
-    park();
 }
 
 // override standard library logging function with the uart one
@@ -140,5 +135,5 @@ pub fn panic(msg: []const u8, error_return_trace: ?*builtin.StackTrace, siz: ?us
     _ = siz;
 
     std.log.err("Zig panic! {s}", .{msg});
-    park();
+    syscon.poweroff();
 }
