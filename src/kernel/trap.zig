@@ -304,7 +304,7 @@ fn trap_handler(running: *process.Process) callconv(.C) void {
         : [next] "r" (next),
     );
 
-    log.info("Finished handling trap", .{});
+    log.info("Trap handled, scheduling \"{s}\"", .{next.name});
 }
 
 // zig trap panic handler

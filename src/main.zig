@@ -50,8 +50,6 @@ fn kinit() !noreturn {
     // if something fails during initialisation
     trap.init();
 
-    std.log.info("Welcome to QuartOS", .{});
-
     // initialise paging and process scheduling
     try paging.init();
     try schedule.init();
@@ -70,6 +68,9 @@ fn kinit() !noreturn {
     _ = try schedule.createMapped("hello", @embedFile("user/programs/hello"), &user_uart);
     // a fibonacci C program
     const fib = try schedule.createMapped("fib", @embedFile("user/programs/fibonacci"), &user_uart);
+
+    // setup done, display welcome message
+    std.log.info("Welcome to QuartOS", .{});
 
     // initial process
     // we pull it out manually because scheduling assumes we have a running

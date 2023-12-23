@@ -2,6 +2,8 @@
 const std = @import("std");
 const io = std.io;
 
+const timer = @import("timer.zig");
+
 // register definitions
 // https://www.lammertbies.nl/comm/info/serial-uart
 const LineStatusReg = packed struct(u8) {
@@ -49,7 +51,9 @@ const in: io.Reader(void, error{}, read) = .{ .context = {} };
 
 // a zig custom logger that wraps uart
 pub fn log(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
+    // output time we logged at
+    out.print("[{d} ", .{timer.getTime()}) catch return;
     // get scope & level as a prefix string
-    const prefix = "[" ++ comptime level.asText() ++ "] (" ++ @tagName(scope) ++ "): ";
+    const prefix = comptime level.asText() ++ "] (" ++ @tagName(scope) ++ "): ";
     out.print(prefix ++ format ++ "\r\n", args) catch return;
 }
