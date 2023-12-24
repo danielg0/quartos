@@ -6,6 +6,7 @@ const log = @import("std").log.scoped(.timer);
 // on virt, mtime clock runs at 10Mhz
 // https://stackoverflow.com/a/63242624
 const clock_hz: u64 = 10000000;
+pub const slice: f32 = 0.005;
 
 // on riscv mtime and mtimecmp are 64 bit memory-mapped registers
 // mtime is current clock time
@@ -54,7 +55,7 @@ fn handler(running: *process.Process) callconv(.C) void {
     running.state = .READY;
 
     // TODO: implement a task queue
-    set(offset(1));
+    set(offset(slice));
 }
 
 // setup timer driver

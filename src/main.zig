@@ -80,7 +80,7 @@ fn kinit() !noreturn {
     init.state = .RUNNING;
 
     // set a timer for the end of the first slice
-    timer.set(timer.offset(1));
+    timer.set(timer.offset(timer.slice));
 
     // enable paging for the initial process
     paging.enable(init.page_table);
