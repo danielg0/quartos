@@ -356,12 +356,12 @@ fn fault_handler(running: *process.Process) callconv(.C) void {
                 // kill process
                 running.state = .DYING;
             };
-            log.info("Grew process stack to avoid page fault", .{});
+            log.info("Grew \"{s}\" stack to avoid page fault", .{running.name});
             return;
         }
     }
 
     // if we haven't returned at this point kill the process
     running.state = .DYING;
-    log.warn("Process made a page fault and is being killed", .{});
+    log.warn("\"{s}\" made a page fault and is being killed", .{running.name});
 }
